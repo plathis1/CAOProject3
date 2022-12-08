@@ -28,7 +28,6 @@ typedef struct Register {
     int zeroFlag;
     int isValid;    //0 - If invalid  1-valid
 } Register;
-
 //new end
 /* Format of an APEX instruction  */
 typedef struct APEX_Instruction
@@ -64,30 +63,50 @@ typedef struct CPU_Stage
     int rs2_value;
     int rs3_value;
     int result_buffer;
-    int memory_address;
     int has_insn;
     int stalled;
-
     //for IQ
     int free_bit;  //1 allocated 0 free
-    
     int src1_validbit; //initialize to 1 
     int src1_tag;     
     int src1_value;    // value of first source register          rs1
-    
     int src2_validbit;  // initialize to 1
     int src2_tag;
-    int src2_value;    // value of second source register         rs2
-    
+    int src2_value;    // value of second source register         rs2  
     int src3_validbit;  // initialize to 1
     int src3_tag;
-    int src3_value;   // value of third source register            rs3
-    
+    int src3_value;   // value of third source register            rs3 
     int dtype;
     int dest;  //LSQ index or physical register address eg p'8' .  rd
+    //ROB variables
+    int rob_valid;
+    int lsq_index;
+
+    //lsq variables
+    int lsq_valid;
+    int l_or_s_bit;
+    int mem_valid;
+    int memory_address;
+    int dest_reg_forLOAD;
+    //for store use src1 valid bit tag bit valid bit
+   
 
 } CPU_Stage;
 
+typedef struct ReorderBuffer {
+    int head;
+    int tail;
+    int size;
+    unsigned capacity;
+    CPU_Stage * array;
+}ReorderBuffer;
+typedef struct LSQ{
+    int front;
+    int rear;
+    int size;
+    unsigned capacity;
+    CPU_Stage* array;
+}LSQ;
 /* Model of APEX CPU */
 typedef struct APEX_CPU
 {
@@ -109,6 +128,8 @@ typedef struct APEX_CPU
     int fetch_from_next_cycle;
     
     PhysicalRegistersQueue* freePhysicalRegister;
+    ReorderBuffer* reorderBuffer;
+    LSQ* loadStoreQueue;
     int allocationList[15];
     
 
@@ -126,6 +147,15 @@ APEX_Instruction *create_code_memory(const char *filename, int *size);
 APEX_CPU *APEX_cpu_init(const char *filename);
 void Forwarding_Bus_0_tagpart(APEX_CPU *cpu);
 void Forwarding_Bus_1_tagpart(APEX_CPU *cpu);
+//ROB
+void UpdateROB(APEX_CPU *cpu);
+int isROBFull(struct ReorderBuffer* queue);
+int isROBEmpty(struct ReorderBuffer* queue);
+//LSQ
+int isLSQFull(struct LSQ* queue);
+int isLSQEmpty(struct LSQ* queue);
+
+int commit(APEX_CPU* cpu);
 void APEX_cpu_run(APEX_CPU *cpu);
 void APEX_cpu_stop(APEX_CPU *cpu);
 //new
