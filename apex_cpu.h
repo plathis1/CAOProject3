@@ -161,10 +161,6 @@ void APEX_cpu_stop(APEX_CPU *cpu);
 //new
 int isIssueQueueFull(APEX_CPU* cpu);
 int isIssueQueueEmpty(APEX_CPU* cpu);
-void pushToIssueQueue(APEX_CPU* cpu,CPU_Stage instruction);
-void fetchNextIntegerInstructionFromIssueQueue(APEX_CPU* cpu);
-void fetchNextMultiplyInstructionFromIssueQueue(APEX_CPU* cpu);
-void printContentsOfIssueQueue(APEX_CPU* cpu);
 
 //Physical Register Queue Operations
 int isRegisterQueueFull(struct PhysicalRegistersQueue* queue);
