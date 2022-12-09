@@ -149,6 +149,7 @@ void Forwarding_Bus_0_tagpart(APEX_CPU *cpu);
 void Forwarding_Bus_1_tagpart(APEX_CPU *cpu);
 //ROB
 void UpdateROB(APEX_CPU *cpu);
+void printROB(APEX_CPU *cpu);
 int isROBFull(struct ReorderBuffer* queue);
 int isROBEmpty(struct ReorderBuffer* queue);
 //LSQ

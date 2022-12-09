@@ -16,6 +16,7 @@
 
 #include "apex_macros.h"
 // ROB
+ int index_ins=100; //started at 100 increases by 5
 struct ReorderBuffer *createROBQueue(unsigned capacity)
 {
   struct ReorderBuffer *rob = (struct ReorderBuffer *)malloc(sizeof(struct ReorderBuffer));
@@ -25,13 +26,24 @@ struct ReorderBuffer *createROBQueue(unsigned capacity)
   rob->array = (CPU_Stage *)malloc(rob->capacity * sizeof(CPU_Stage));
   return rob;
 }
-struct LSQ* createLSQQueue(unsigned capacity){
-    struct LSQ* lsq = (struct LSQ*) malloc(sizeof(struct LSQ));
-    lsq->capacity = capacity;
-    lsq->front = lsq->size = 0;
-    lsq->rear = capacity - 1;
-    lsq->array = (CPU_Stage*) malloc(lsq->capacity * sizeof(CPU_Stage));
-    return lsq;
+struct LSQ *createLSQQueue(unsigned capacity)
+{
+  struct LSQ *lsq = (struct LSQ *)malloc(sizeof(struct LSQ));
+  lsq->capacity = capacity;
+  lsq->front = lsq->size = 0;
+  lsq->rear = capacity - 1;
+  lsq->array = (CPU_Stage *)malloc(lsq->capacity * sizeof(CPU_Stage));
+  return lsq;
+}
+struct PhysicalRegistersQueue *createQueue(unsigned capacity)
+{
+
+  struct PhysicalRegistersQueue *queue = (struct PhysicalRegistersQueue *)malloc(sizeof(struct PhysicalRegistersQueue));
+  queue->capacity = capacity;
+  queue->front = queue->size = 0;
+  queue->rear = capacity - 1;
+  queue->array = (int *)malloc(queue->capacity * sizeof(int));
+  return queue;
 }
 // list
 void add_at_rear(struct Node **head_ref, int new_data[])
@@ -84,10 +96,10 @@ int isEmpty(struct Node *node)
 {
   if (node != NULL)
   {
-    //printf("list is not empty\n");
+    // printf("list is not empty\n");
     return 0;
   }
-  //printf("list is empty\n");
+  // printf("list is empty\n");
   return 1;
 }
 void print_bus0(APEX_CPU *cpu)
@@ -97,20 +109,6 @@ void print_bus0(APEX_CPU *cpu)
 void print_bus1(APEX_CPU *cpu)
 { // print and iterate through the list
   printf("Bus 1 have values %d and %d\n", cpu->bus1.tag_part, cpu->bus1.data_part);
-}
-/* Converts the PC(4000 series) into array index for code memory
- *
- * Note: You are not supposed to edit this function
- */
-struct PhysicalRegistersQueue *createQueue(unsigned capacity)
-{
-
-  struct PhysicalRegistersQueue *queue = (struct PhysicalRegistersQueue *)malloc(sizeof(struct PhysicalRegistersQueue));
-  queue->capacity = capacity;
-  queue->front = queue->size = 0;
-  queue->rear = capacity - 1;
-  queue->array = (int *)malloc(queue->capacity * sizeof(int));
-  return queue;
 }
 int print_physical_register_state(APEX_CPU *cpu)
 {
@@ -142,12 +140,25 @@ static void printContentsOfFreeRegistersList(APEX_CPU *cpu)
 {
   printf("\n\n\n|\tFree Registers\t|\n\n\n");
   printf("Head ->\t");
+  if(cpu->freePhysicalRegister->rear==14){
   for (int i = cpu->freePhysicalRegister->front; i <= cpu->freePhysicalRegister->rear; i++)
   {
     printf("%d \t", cpu->freePhysicalRegister->array[i]);
   }
   printf("\n");
+  }else{
+  for (int i = cpu->freePhysicalRegister->front; i <= 14; i++)
+  {
+    printf("%d \t", cpu->freePhysicalRegister->array[i]);
+  }
+  for (int i = 0; i <= cpu->freePhysicalRegister->rear; i++)
+  {
+    printf("%d \t", cpu->freePhysicalRegister->array[i]);
+  }
+  printf("\n");
+  }
 }
+
 static void print_instruction(const CPU_Stage *stage)
 {
   switch (stage->opcode)
@@ -721,7 +732,8 @@ static void APEX_decode(APEX_CPU *cpu)
 }
 static void APEX_dispatch(APEX_CPU *cpu)
 {
-  if (cpu->dispatch.has_insn && cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && isROBFull(cpu->reorderBuffer) == 0 && isLSQFull(cpu->loadStoreQueue)==0){
+  if (cpu->dispatch.has_insn && cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
+  {
     switch (cpu->dispatch.opcode)
     {
     case OPCODE_ADD:
@@ -833,6 +845,7 @@ static void APEX_dispatch(APEX_CPU *cpu)
     case OPCODE_HALT:
     {
       /* HALT doesn't have register operands */
+      cpu->dispatch.free_bit = 1;
       cpu->decode.has_insn = 0;
       break;
     }
@@ -840,6 +853,7 @@ static void APEX_dispatch(APEX_CPU *cpu)
     case OPCODE_NOP:
     {
       /* NOP doesn't have register operands */
+      cpu->dispatch.free_bit = 1;
       break;
     }
 
@@ -849,7 +863,7 @@ static void APEX_dispatch(APEX_CPU *cpu)
     }
     }
 
-    if (cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && isROBFull(cpu->reorderBuffer) == 0)
+    if (cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
     {
       int free_IQ = -1;
       for (int i = 0; i < IQ_SIZE; i++)
@@ -860,11 +874,31 @@ static void APEX_dispatch(APEX_CPU *cpu)
           break;
         }
       }
-      cpu->issueQueue[free_IQ] = cpu->dispatch;
-      UpdateROB(cpu);
-      // pushToIssueQueue(cpu,cpu->dispatch);
-      // pushToROB(cpu->reorderBuffer,cpu->dispatch);
-      // pushToLSQ(cpu->loadStoreQueue,cpu->dispatch);  //for LS ins
+         
+      if (cpu->dispatch.opcode==OPCODE_LOAD || cpu->dispatch.opcode==OPCODE_STORE ||
+          cpu->dispatch.opcode==OPCODE_LDR || cpu->dispatch.opcode==OPCODE_STR )
+      {
+        if (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity)
+      {
+             cpu->loadStoreQueue->rear = (cpu->loadStoreQueue->rear + 1)%cpu->loadStoreQueue->capacity;
+             cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear] = cpu->dispatch;
+             cpu->loadStoreQueue->size = cpu->loadStoreQueue->size + 1;
+             cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].lsq_index=index_ins;
+             index_ins=index_ins+5;
+           
+      }
+      }else{
+        cpu->issueQueue[free_IQ] = cpu->dispatch;
+      }
+      // updating ROB for all instructions
+      if (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity)
+      {
+             cpu->reorderBuffer->tail = (cpu->reorderBuffer->tail + 1)%cpu->reorderBuffer->capacity;
+             cpu->reorderBuffer->array[cpu->reorderBuffer->tail] = cpu->dispatch;
+             cpu->reorderBuffer->size = cpu->reorderBuffer->size + 1;
+             cpu->reorderBuffer->array[cpu->reorderBuffer->tail].lsq_index=cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].lsq_index;
+           
+      }
       if (ENABLE_DEBUG_MESSAGES)
       {
         print_stage_content("Rename2/Dispatch", &cpu->dispatch);
@@ -901,7 +935,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
 }
 static void APEX_issueQueueUpdate(APEX_CPU *cpu)
 {
-
   if (cpu->issueQueue[0].free_bit == 1)
   {
     for (int i = 0; i < IQ_SIZE; i++)
@@ -938,7 +971,6 @@ static void APEX_issueQueueUpdate(APEX_CPU *cpu)
           cpu->mulFU.dtype = cpu->issueQueue[i].dtype;
           cpu->mulFU.dest = cpu->issueQueue[i].dest;
           cpu->mulFU.has_insn = 1;
-          print_issueQueue(cpu);
           for (int j = i; j < 8; j++)
           {
             cpu->issueQueue[i] = cpu->issueQueue[j - 1];
@@ -974,7 +1006,7 @@ static void APEX_issueQueueUpdate(APEX_CPU *cpu)
           cpu->logicalopFU.dtype = cpu->issueQueue[i].dtype;
           cpu->logicalopFU.dest = cpu->issueQueue[i].dest;
           cpu->logicalopFU.has_insn = 1;
-          print_issueQueue(cpu);
+          
           for (int j = i; j < 8; j++)
           {
             cpu->issueQueue[i] = cpu->issueQueue[j - 1];
@@ -983,9 +1015,7 @@ static void APEX_issueQueueUpdate(APEX_CPU *cpu)
         else if (cpu->intFU.has_insn == 0 && (strcmp(cpu->issueQueue[i].opcode_str, "MOVC") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "ADD") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "ADDL") == 0 ||
                                               strcmp(cpu->issueQueue[i].opcode_str, "SUB") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "SUBL") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "DIV") == 0 ||
                                               strcmp(cpu->issueQueue[i].opcode_str, "JUMP") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "BZ") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "BNZ") == 0 ||
-                                              strcmp(cpu->issueQueue[i].opcode_str, "CMP") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "NOP") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "HALT") == 0 ||
-                                              strcmp(cpu->issueQueue[i].opcode_str, "LOAD") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "LDR") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "STORE") == 0 ||
-                                              strcmp(cpu->issueQueue[i].opcode_str, "STR") == 0))
+                                              strcmp(cpu->issueQueue[i].opcode_str, "CMP") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "NOP") == 0 || strcmp(cpu->issueQueue[i].opcode_str, "HALT") == 0))
         {
 
           cpu->intFU.pc = cpu->issueQueue[i].pc;
@@ -1016,7 +1046,7 @@ static void APEX_issueQueueUpdate(APEX_CPU *cpu)
           cpu->intFU.dtype = cpu->issueQueue[i].dtype;
           cpu->intFU.dest = cpu->issueQueue[i].dest;
           cpu->intFU.has_insn = 1;
-          print_issueQueue(cpu);
+          
           for (int j = i; j < 8; j++)
           {
             cpu->issueQueue[i] = cpu->issueQueue[j - 1];
@@ -1025,108 +1055,131 @@ static void APEX_issueQueueUpdate(APEX_CPU *cpu)
       }
     }
   }
-  cpu->reorderBuffer->array->free_bit = 1;
-  cpu->reorderBuffer->array->pc = cpu->dispatch.pc;
 }
-void UpdateROB(APEX_CPU *cpu){
-if(isROBFull(cpu->reorderBuffer)==0){
-  for (int i = cpu->reorderBuffer->head; i <= cpu->reorderBuffer->tail; i++)
+
+void printROB(APEX_CPU *cpu)
+{
+  if (cpu->reorderBuffer->size != 0)
   {
-    if (cpu->reorderBuffer->array[i].rob_valid == 0)
-    {
-      cpu->reorderBuffer->array[i].rob_valid = 1;         // making rob entry invalid
-      cpu->reorderBuffer->array[i].free_bit = 1;          // rob allocated bit 1
-      cpu->reorderBuffer->array[i].pc = cpu->dispatch.pc; // assigning pc value
-      cpu->reorderBuffer->array[i].dest = cpu->dispatch.dest;
-      cpu->reorderBuffer->array[i].rd = cpu->dispatch.rd;
-      cpu->reorderBuffer->array[i].opcode = cpu->dispatch.opcode;
-      cpu->reorderBuffer->array[i].rs1 = cpu->dispatch.rs1;
-      cpu->reorderBuffer->array[i].rs2 = cpu->dispatch.rs2;
-      cpu->reorderBuffer->array[i].rs3 = cpu->dispatch.rs3;
-      cpu->reorderBuffer->array[i].imm = cpu->dispatch.imm;
-      strcpy(cpu->reorderBuffer->array[i].opcode_str,cpu->dispatch.opcode_str);
-      break;
-      // lsq index is pending
-    }
-  }
-}
-   if (isROBEmpty(cpu->reorderBuffer) == 0){
     printf("ROB contents are:\n");
-   for (int i = cpu->reorderBuffer->head; i <= cpu->reorderBuffer->tail; i++){
-   if (cpu->reorderBuffer->array[i].rob_valid == 1){
-     printf("%d.", i+1);
+    int j = 1;
+    for (int i = cpu->reorderBuffer->head; i <= cpu->reorderBuffer->tail; i++)
+    {
+        printf("%d.", j);
+        j++;
+        switch (cpu->reorderBuffer->array[i].opcode)
+        {
+        case OPCODE_ADD:
+        case OPCODE_SUB:
+        case OPCODE_MUL:
+        case OPCODE_DIV:
+        case OPCODE_AND:
+        case OPCODE_OR:
+        case OPCODE_XOR:
+        case OPCODE_LDR:
+        {
+          printf("%s,R%d,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].rs1,
+                 cpu->reorderBuffer->array[i].rs2);
+          break;
+        }
+        case OPCODE_ADDL:
+        case OPCODE_SUBL:
+        case OPCODE_LOAD:
+        {
+          printf("%s,R%d,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].imm);
+          break;
+        }
 
-      switch (cpu->reorderBuffer->array[i].opcode)
-      {
-      case OPCODE_ADD:
-      case OPCODE_SUB:
-      case OPCODE_MUL:
-      case OPCODE_DIV:
-      case OPCODE_AND:
-      case OPCODE_OR:
-      case OPCODE_XOR:
-      case OPCODE_LDR:
-      {
-        printf("%s,R%d,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].rs1,
-               cpu->reorderBuffer->array[i].rs2);
-        break;
-      }
-      case OPCODE_ADDL:
-      case OPCODE_SUBL:
-      case OPCODE_LOAD:
-      {
-        printf("%s,R%d,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].imm);
-        break;
-      }
+        case OPCODE_MOVC:
+        {
+          printf("%s,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].imm);
+          break;
+        }
+        case OPCODE_JUMP:
+        {
+          printf("%s,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].imm);
+          break;
+        }
+        case OPCODE_STORE:
+        {
+          printf("%s,R%d,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2,
+                 cpu->reorderBuffer->array[i].imm);
+          break;
+        }
 
-      case OPCODE_MOVC:
-      {
-        printf("%s,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd, cpu->reorderBuffer->array[i].imm);
-        break;
-      }
-      case OPCODE_JUMP:
-      {
-        printf("%s,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].imm);
-        break;
-      }
-      case OPCODE_STORE:
-      {
-        printf("%s,R%d,R%d,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2,
-               cpu->reorderBuffer->array[i].imm);
-        break;
-      }
+        case OPCODE_STR:
+        {
+          printf("%s,R%d,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2,
+                 cpu->reorderBuffer->array[i].rs3);
+          break;
+        }
 
-      case OPCODE_STR:
-      {
-        printf("%s,R%d,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2,
-               cpu->reorderBuffer->array[i].rs3);
-        break;
-      }
+        case OPCODE_BZ:
+        case OPCODE_BNZ:
+        {
+          printf("%s,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].imm);
+          break;
+        }
 
-      case OPCODE_BZ:
-      case OPCODE_BNZ:
-      {
-        printf("%s,#%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].imm);
-        break;
-      }
+        case OPCODE_HALT:
+        case OPCODE_NOP:
+        {
+          printf("%s\n", cpu->reorderBuffer->array[i].opcode_str);
+          break;
+        }
 
-      case OPCODE_HALT:
-      case OPCODE_NOP:
-      {
-        printf("%s\n", cpu->reorderBuffer->array[i].opcode_str);
-        break;
-      }
+        case OPCODE_CMP:
+        {
+          printf("%s,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2);
+          break;
+        }
+        }
+      
+    }
+    printf("\n");
+  }
+}
+void printLSQ(APEX_CPU *cpu)
+{
+  if (cpu->loadStoreQueue->size != 0)
+  {
+    printf("LSQ contents are:\n");
+    int j = 1;
+    for (int i = cpu->loadStoreQueue->front; i <= cpu->loadStoreQueue->rear; i++)
+    {
+        printf("%d.", j);
+        j++;
+        switch (cpu->loadStoreQueue->array[i].opcode)
+        {
+        case OPCODE_LDR:
+        {
+          printf("%s,R%d,R%d,R%d\n", cpu->loadStoreQueue->array[i].opcode_str, cpu->loadStoreQueue->array[i].rd, cpu->loadStoreQueue->array[i].rs1,
+                 cpu->loadStoreQueue->array[i].rs2);
+          break;
+        }
+        case OPCODE_LOAD:
+        {
+          printf("%s,R%d,R%d,#%d\n", cpu->loadStoreQueue->array[i].opcode_str, cpu->loadStoreQueue->array[i].rd, cpu->loadStoreQueue->array[i].rs1, cpu->loadStoreQueue->array[i].imm);
+          break;
+        }
+        case OPCODE_STORE:
+        {
+          printf("%s,R%d,R%d,#%d\n", cpu->loadStoreQueue->array[i].opcode_str, cpu->loadStoreQueue->array[i].rs1, cpu->loadStoreQueue->array[i].rs2,
+                 cpu->loadStoreQueue->array[i].imm);
+          break;
+        }
 
-      case OPCODE_CMP:
-      {
-        printf("%s,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2);
-        break;
-      }
+        case OPCODE_STR:
+        {
+          printf("%s,R%d,R%d,R%d\n", cpu->loadStoreQueue->array[i].opcode_str, cpu->loadStoreQueue->array[i].rs1, cpu->loadStoreQueue->array[i].rs2,
+                 cpu->loadStoreQueue->array[i].rs3);
+          break;
+        }
+        
       }
     }
+    printf("\n");
   }
-  printf("\n");
-}
 }
 /*
  * Execute Stages of APEX Pipeline
@@ -1144,18 +1197,16 @@ static void APEX_intFU(APEX_CPU *cpu)
     {
     case OPCODE_ADD:
     {
-      printf("before its working and P2 value %d and P3 value %d\n", cpu->intFU.src1_value, cpu->intFU.src2_value);
       if (cpu->intFU.src1_validbit == 1)
       {
-        cpu->intFU.src1_value = cpu->physicalregs[cpu->rename_table[cpu->intFU.rs1]].value;
-        cpu->physicalregs[cpu->rename_table[cpu->intFU.rs1]].isValid = 0;
+        cpu->intFU.src1_value = cpu->physicalregs[cpu->intFU.src2_tag].value;
+        cpu->physicalregs[cpu->intFU.src2_tag].isValid = 0;
       }
       if (cpu->intFU.src2_validbit == 1)
       {
-        cpu->intFU.src2_value = cpu->physicalregs[cpu->rename_table[cpu->intFU.rs2]].value;
-        cpu->physicalregs[cpu->rename_table[cpu->intFU.rs2]].isValid = 0;
+        cpu->intFU.src2_value = cpu->physicalregs[cpu->intFU.src2_tag].value;
+        cpu->physicalregs[cpu->intFU.src2_tag].isValid = 0;
       }
-      printf("its working and P2 value %d and P3 value %d\n", cpu->intFU.src1_value, cpu->intFU.src2_value);
       cpu->intFU.result_buffer = cpu->intFU.src1_value + cpu->intFU.src2_value;
 
       if (cpu->intFU.result_buffer == 0)
@@ -1213,7 +1264,6 @@ static void APEX_intFU(APEX_CPU *cpu)
     {
 
       cpu->intFU.result_buffer = cpu->intFU.imm;
-
       /* Set the zero flag based on the result buffer */
       if (cpu->intFU.result_buffer == 0)
       {
@@ -1544,6 +1594,7 @@ void Forwarding_Bus_0_datapart(APEX_CPU *cpu)
     cpu->bus0.data_part = cpu->bus0.next_data_bus;
     print_bus0(cpu);
     cpu->physicalregs[cpu->bus0.tag_part].value = cpu->bus0.data_part;
+    cpu->physicalregs[cpu->bus0.tag_part].isValid = 0;
     cpu->bus0.bus_was_busy = 0;
   }
 }
@@ -1628,10 +1679,12 @@ static void APEX_memory(APEX_CPU *cpu){
   }
 }
 */
-int commit(APEX_CPU* cpu) {
-   int i=0;
-   if(cpu->reorderBuffer->array[i].rob_valid==0 && cpu->physicalregs[cpu->reorderBuffer->array[i].dest].isValid==0){
-   switch (cpu->reorderBuffer->array[i].opcode){
+int commit(APEX_CPU *cpu)
+{
+  if (cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest].isValid == 0 && cpu->reorderBuffer->size !=0)
+  {
+    switch (cpu->reorderBuffer->array[cpu->reorderBuffer->head].opcode)
+    {
     case OPCODE_ADD:
     case OPCODE_LOAD:
     case OPCODE_MOVC:
@@ -1641,19 +1694,19 @@ int commit(APEX_CPU* cpu) {
     case OPCODE_DIV:
     case OPCODE_LDR:
     {
-      cpu->regs[cpu->reorderBuffer->array[i].rd] = cpu->reorderBuffer->array[i].result_buffer;
+      cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].rd] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest].value;
       break;
     }
     case OPCODE_MUL:
     {
-      cpu->regs[cpu->reorderBuffer->array[i].rd] = cpu->reorderBuffer->array[i].result_buffer;
+      cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].rd] = cpu->reorderBuffer->array[cpu->reorderBuffer->head].result_buffer;
       break;
     }
     case OPCODE_AND:
     case OPCODE_OR:
     case OPCODE_XOR:
     {
-      cpu->regs[cpu->reorderBuffer->array[i].rd] = cpu->reorderBuffer->array[i].result_buffer;
+      cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].rd] = cpu->reorderBuffer->array[cpu->reorderBuffer->head].result_buffer;
       break;
     }
     case OPCODE_STORE:
@@ -1664,25 +1717,36 @@ int commit(APEX_CPU* cpu) {
     case OPCODE_NOP:
     case OPCODE_CMP:
     {
-
-
       break;
     }
-   case OPCODE_HALT:{ 
-     return 1;
-    break;
+    case OPCODE_HALT:
+    {
+      return 1;
+      break;
     }
     default:
     {
       break;
     }
     }
-    //delete at the head of ROB
-    cpu->reorderBuffer->head = (cpu->reorderBuffer->head + 1)%cpu->reorderBuffer->capacity;
-    cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
-    cpu->insn_completed++;
-    }
-    return 0;
+   // int insert_dest=cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest;
+   //printf("rear of free physic reg is %d\n",cpu->freePhysicalRegister->rear);
+   insertRegister(cpu->freePhysicalRegister,0);
+
+   /*if (cpu->freePhysicalRegister->size != cpu->freePhysicalRegister->capacity)
+  {
+       cpu->freePhysicalRegister->rear = (cpu->freePhysicalRegister->rear + 1) % cpu->freePhysicalRegister->capacity;
+       cpu->freePhysicalRegister->array[cpu->freePhysicalRegister->rear] = cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest;
+       cpu->freePhysicalRegister->size = cpu->freePhysicalRegister->size + 1;
+  }
+  */
+   //delete at the head of ROB
+   cpu->reorderBuffer->head = (cpu->reorderBuffer->head + 1) % cpu->reorderBuffer->capacity;
+   cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+   cpu->insn_completed++;
+   
+  }
+  return 0;
 }
 APEX_CPU *APEX_cpu_init(const char *filename)
 {
@@ -1711,8 +1775,6 @@ APEX_CPU *APEX_cpu_init(const char *filename)
   cpu->intFU.stalled = 0;
   cpu->mulFU.stalled = 0;
   cpu->logicalopFU.stalled = 0;
-  // cpu->memory.stalled = 0;
-  // cpu->writeback.stalled = 0;
   /* Parse input file and create code memory */
   cpu->code_memory = create_code_memory(filename, &cpu->code_memory_size);
   if (!cpu->code_memory)
@@ -1720,14 +1782,9 @@ APEX_CPU *APEX_cpu_init(const char *filename)
     free(cpu);
     return NULL;
   }
-
-  // new code
-
-  // int physicalreg[PREG_FILE_SIZE][3]; // physical registers- valid bit-0 data value -1 cc flag value -2
-  // int renametable[REG_FILE_SIZE+1][1000];
   cpu->freePhysicalRegister = createQueue(15);
   cpu->reorderBuffer = createROBQueue(12);
-  cpu->loadStoreQueue=createLSQQueue(8);
+  cpu->loadStoreQueue = createLSQQueue(4);
   for (int i = 0; i < 15; i++)
   {
     insertRegister(cpu->freePhysicalRegister, i);
@@ -1771,10 +1828,7 @@ void APEX_cpu_run(APEX_CPU *cpu)
       printf("Clock Cycle #: %d\n", cpu->clock + 1);
       printf("--------------------------------------------\n");
     }
-    if(commit(cpu)){
-      printf("APEX_CPU: Simulation Stopped, cycles = %d instructions = %d\n", cpu->clock + 1, cpu->insn_completed);
-      break;
-    }
+    
     if (cpu->bus1.bus_was_busy == 1)
     {
       Forwarding_Bus_1_datapart(cpu);
@@ -1784,11 +1838,18 @@ void APEX_cpu_run(APEX_CPU *cpu)
       Forwarding_Bus_0_datapart(cpu);
     }
     list_to_bus(cpu);
-
+    if (commit(cpu))
+    {
+      printf("APEX_CPU: Simulation Stopped, cycles = %d instructions = %d\n", cpu->clock + 1, cpu->insn_completed);
+      break;
+    }
     printList(cpu->head);
     APEX_mulFU(cpu);
     APEX_logicalopFU(cpu);
     APEX_intFU(cpu);
+    printROB(cpu);
+    printLSQ(cpu);
+    print_issueQueue(cpu);
     APEX_issueQueueUpdate(cpu);
     APEX_dispatch(cpu);
     APEX_decode(cpu);
@@ -1796,6 +1857,7 @@ void APEX_cpu_run(APEX_CPU *cpu)
 
     printf("\nFlag contents: Z = %d\n\n", cpu->zero_flag);
     printContentsOfFreeRegistersList(cpu);
+    print_reg_file(cpu);
     // print_physical_register_state(cpu);
     print_rename_table(cpu);
     // print_data_memory(cpu);
@@ -1851,7 +1913,9 @@ void insertRegister(struct PhysicalRegistersQueue *queue, int item)
   {
     return;
   }
+  
   queue->rear = (queue->rear + 1) % queue->capacity;
+  //queue->rear = queue->rear + 1;
   queue->array[queue->rear] = item;
   queue->size = queue->size + 1;
 }
@@ -1863,10 +1927,6 @@ int getRegister(struct PhysicalRegistersQueue *queue)
   int item = queue->array[queue->front];
   queue->front = (queue->front + 1) % queue->capacity;
   queue->size = queue->size - 1;
-  // doubtful code
-  // if(cpu->decode.stalled==1){
-  // cpu->decode.stalled=0;}
-  //
   return item;
 }
 
@@ -1899,42 +1959,9 @@ int isIssueQueueFull(APEX_CPU *cpu)
   }
   return 1;
 }
-
 int isIssueQueueEmpty(APEX_CPU *cpu)
 {
   if (cpu->issueQueue[0].free_bit == 0)
-  {
-    return 1;
-  }
-  return 0;
-}
-// ROB
-int isROBFull(struct ReorderBuffer *queue)
-{
-  if (queue->size == queue->capacity)
-  {
-    return 1;
-  }
-  return 0;
-}
-int isROBEmpty(struct ReorderBuffer *queue)
-{
-  if (queue->size != 0)
-  {
-    return 1;
-  }
-  return 0;
-}
-//LSQ
-int isLSQFull(struct LSQ* queue){
-    if (queue->size == queue->capacity)
-  {
-    return 1;
-  }
-  return 0;
-}
-int isLSQEmpty(struct LSQ* queue){
-    if (queue->size != 0)
   {
     return 1;
   }
