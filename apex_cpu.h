@@ -130,9 +130,7 @@ typedef struct APEX_CPU
     PhysicalRegistersQueue* freePhysicalRegister;
     ReorderBuffer* reorderBuffer;
     LSQ* loadStoreQueue;
-    int allocationList[15];
     
-
     /* Pipeline stages */
     CPU_Stage fetch;
     CPU_Stage decode;
@@ -156,7 +154,7 @@ int isROBEmpty(struct ReorderBuffer* queue);
 int isLSQFull(struct LSQ* queue);
 int isLSQEmpty(struct LSQ* queue);
 
-int commit(APEX_CPU* cpu);
+int commit_on_archs(APEX_CPU* cpu);
 void APEX_cpu_run(APEX_CPU *cpu);
 void APEX_cpu_stop(APEX_CPU *cpu);
 //new
