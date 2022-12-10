@@ -12,23 +12,25 @@
 
 #include "apex_macros.h"
 //new
-typedef struct PhysicalRegistersQueue {
+typedef struct PhyRegfile {
     int front;
     int rear;
     int size;
     unsigned capacity;
     int* array;
-}PhysicalRegistersQueue;
+}PhyRegfile;
+
 struct Node {
     int data_values[2];
     struct Node* next;
 };
+
 typedef struct Register {
     int value;
     int zeroFlag;
-    int isValid;    //0 - If invalid  1-valid
+    int isValid;
 } Register;
-//new end
+
 /* Format of an APEX instruction  */
 typedef struct APEX_Instruction
 {
@@ -40,14 +42,16 @@ typedef struct APEX_Instruction
     int rs3;
     int imm;
 } APEX_Instruction;
-typedef struct Forwarding_Bus
+
+typedef struct Bus_forwarding
 {
 int busy;
 int tag_part;
 int data_part;
 int next_data_bus;
 int bus_was_busy;
-} Forwarding_Bus;
+} Bus_forwarding;
+
 /* Model of CPU stage latch */
 typedef struct CPU_Stage
 {
@@ -80,9 +84,9 @@ typedef struct CPU_Stage
     int dest;  //LSQ index or physical register address eg p'8' .  rd
     //ROB variables
     int rob_valid;
-    int lsq_index;
 
     //lsq variables
+    int lsq_index;
     int lsq_valid;
     int l_or_s_bit;
     int mem_valid;
@@ -94,19 +98,21 @@ typedef struct CPU_Stage
 } CPU_Stage;
 
 typedef struct ReorderBuffer {
-    int head;
-    int tail;
+    int front;
+    int rear;
     int size;
     unsigned capacity;
     CPU_Stage * array;
 }ReorderBuffer;
-typedef struct LSQ{
+
+typedef struct LoadStoreFile{
     int front;
     int rear;
     int size;
     unsigned capacity;
     CPU_Stage* array;
-}LSQ;
+}LoadStoreFile;
+
 /* Model of APEX CPU */
 typedef struct APEX_CPU
 {
@@ -117,8 +123,8 @@ typedef struct APEX_CPU
     int valid_regs[REG_FILE_SIZE];       /* Integer register file indicating register valid bit*/
     int rename_table[REG_FILE_SIZE+1];
     Register physicalregs[PREG_FILE_SIZE]; // physical registers- valid bit-0 data value -1 cc flag value -2
-    Forwarding_Bus bus0;
-    Forwarding_Bus bus1;
+    Bus_forwarding bus0;
+    Bus_forwarding bus1;
     struct Node* head;
     int code_memory_size;          /* Number of instruction in the input file */
     APEX_Instruction *code_memory; /* Code Memory */
@@ -127,9 +133,9 @@ typedef struct APEX_CPU
     int zero_flag;                 /* {TRUE, FALSE} Used by BZ and BNZ to branch */
     int fetch_from_next_cycle;
     
-    PhysicalRegistersQueue* freePhysicalRegister;
+    PhyRegfile* freePhysicalRegister;
     ReorderBuffer* reorderBuffer;
-    LSQ* loadStoreQueue;
+    LoadStoreFile* loadStoreQueue;
     
     /* Pipeline stages */
     CPU_Stage fetch;
@@ -146,28 +152,18 @@ APEX_CPU *APEX_cpu_init(const char *filename);
 void Forwarding_Bus_0_tagpart(APEX_CPU *cpu);
 void Forwarding_Bus_1_tagpart(APEX_CPU *cpu);
 //ROB
-void UpdateROB(APEX_CPU *cpu);
 void printROB(APEX_CPU *cpu);
-int isROBFull(struct ReorderBuffer* queue);
-int isROBEmpty(struct ReorderBuffer* queue);
-//LSQ
-int isLSQFull(struct LSQ* queue);
-int isLSQEmpty(struct LSQ* queue);
 
 int commit_on_archs(APEX_CPU* cpu);
-void APEX_cpu_run(APEX_CPU *cpu);
+void APEX_cpu_run(APEX_CPU *cpu,const char *mode ,int cycles);
 void APEX_cpu_stop(APEX_CPU *cpu);
 //new
-int isIssueQueueFull(APEX_CPU* cpu);
+int isIssueQueuecompletelyFull(APEX_CPU* cpu);
 int isIssueQueueEmpty(APEX_CPU* cpu);
 
 //Physical Register Queue Operations
-int isRegisterQueueFull(struct PhysicalRegistersQueue* queue);
-int isRegisterQueueEmpty(struct PhysicalRegistersQueue* queue);
-void insertRegister(struct PhysicalRegistersQueue* queue, int item);
-int getRegister(struct PhysicalRegistersQueue* queue);
-int registerQueueFront(struct PhysicalRegistersQueue* queue);
-int registerQueueRear(struct PhysicalRegistersQueue* queue);
+void assignRegister(struct PhyRegfile* queue, int item);
+int retreiveRegister(struct PhyRegfile* queue);
 
 //new
 #endif

@@ -15,32 +15,33 @@
 #include "apex_cpu.h"
 
 #include "apex_macros.h"
+
 // ROB
 int index_ins = 100; // started at 100 increases by 5
 int mul_count = 0;
 int array2[2];
-struct ReorderBuffer *createROBQueue(unsigned capacity)
+struct ReorderBuffer *establishROBQueueByCapacity(unsigned capacity)
 {
   struct ReorderBuffer *rob = (struct ReorderBuffer *)malloc(sizeof(struct ReorderBuffer));
   rob->capacity = capacity;
-  rob->head = rob->size = 0;
-  rob->tail = capacity - 1;
+  rob->front = rob->size = 0;
+  rob->rear = capacity - 1;
   rob->array = (CPU_Stage *)malloc(rob->capacity * sizeof(CPU_Stage));
   return rob;
 }
-struct LSQ *createLSQQueue(unsigned capacity)
+struct LoadStoreFile *establishLSQQueueByCapacity(unsigned capacity)
 {
-  struct LSQ *lsq = (struct LSQ *)malloc(sizeof(struct LSQ));
+  struct LoadStoreFile *lsq = (struct LoadStoreFile *)malloc(sizeof(struct LoadStoreFile));
   lsq->capacity = capacity;
   lsq->front = lsq->size = 0;
   lsq->rear = capacity - 1;
   lsq->array = (CPU_Stage *)malloc(lsq->capacity * sizeof(CPU_Stage));
   return lsq;
 }
-struct PhysicalRegistersQueue *createQueue(unsigned capacity)
+struct PhyRegfile *establishQueueByCapacity(unsigned capacity)
 {
 
-  struct PhysicalRegistersQueue *queue = (struct PhysicalRegistersQueue *)malloc(sizeof(struct PhysicalRegistersQueue));
+  struct PhyRegfile *queue = (struct PhyRegfile *)malloc(sizeof(struct PhyRegfile));
   queue->capacity = capacity;
   queue->front = queue->size = 0;
   queue->rear = capacity - 1;
@@ -48,53 +49,55 @@ struct PhysicalRegistersQueue *createQueue(unsigned capacity)
   return queue;
 }
 // list
-void add_at_rear(struct Node **head_ref, int new_data[])
+void add_Newdata(struct Node **head_ref_cpu, int new_data[])
 {
   struct Node *new_node = (struct Node *)malloc(sizeof(struct Node));
-  struct Node *last = *head_ref;
+  struct Node *last = *head_ref_cpu;
   new_node->data_values[0] = new_data[0];
   new_node->data_values[1] = new_data[1];
   new_node->next = NULL;
-  if (*head_ref == NULL)
+  if (*head_ref_cpu == NULL)
   {
-    *head_ref = new_node;
+    *head_ref_cpu = new_node;
     return;
   }
-  while (last->next != NULL)
-    last = last->next;
+  for (;last->next != NULL;last = last->next)
+    continue;
 
   last->next = new_node;
   return;
 }
-int *remove_at_front(struct Node **head_ref, int *returnarray)
+
+int *removeDataAtPosiiton(struct Node **head_ref_cpu, int *returnarray)
 {
 
-  struct Node *temp = *head_ref;
+  struct Node *temp = *head_ref_cpu;
 
   if (temp != NULL)
   {
-    returnarray[0] = (*head_ref)->data_values[0];
-    returnarray[1] = (*head_ref)->data_values[1];
-    *head_ref = temp->next;
+    returnarray[0] = (*head_ref_cpu)->data_values[0];
+    returnarray[1] = (*head_ref_cpu)->data_values[1];
+    *head_ref_cpu = temp->next;
     free(temp);
     return returnarray;
   }
   if (temp == NULL)
     return returnarray;
 
-  return returnarray;
   free(temp);
+  return returnarray;
 }
+
 void printList(struct Node *node)
 {
-  while (node != NULL)
+  for (;node != NULL;node = node->next)
   {
     printf("Tag part in list%d ", node->data_values[0]);
     printf("Data part in list%d \n", node->data_values[1]);
-    node = node->next;
   }
 }
-int isEmpty(struct Node *node)
+
+/*int isEmpty(struct Node *node)
 {
   if (node != NULL)
   {
@@ -103,26 +106,29 @@ int isEmpty(struct Node *node)
   }
   // printf("list is empty\n");
   return 1;
-}
+}*/
+
 void print_bus0(APEX_CPU *cpu)
-{ // print and iterate through the list
+{
   printf("Bus 0 have values %d and %d\n", cpu->bus0.tag_part, cpu->bus0.data_part);
 }
+
 void print_bus1(APEX_CPU *cpu)
-{ // print and iterate through the list
+{
   printf("Bus 1 have values %d and %d\n", cpu->bus1.tag_part, cpu->bus1.data_part);
 }
+
 int print_physical_register_state(APEX_CPU *cpu)
 {
   printf("\n=============== STATE OF PHYSICAL ARCHITECTURAL REGISTER FILE ==========\n");
   int count = 0;
-  while (count < PREG_FILE_SIZE)
+  for (;count < PREG_FILE_SIZE;count++)
   {
     printf("|  P_REG[%d]  | V-bit = %s  | Value = %d  | CC = %d  \n", count, (!cpu->physicalregs[count].isValid ? "VALID" : "INVALID"), cpu->physicalregs[count].value, cpu->physicalregs[count].zeroFlag);
-    count++;
   }
   return 0;
 }
+
 int print_rename_table(APEX_CPU *cpu)
 {
   printf("Rename table contents are:\n");
@@ -135,10 +141,12 @@ int print_rename_table(APEX_CPU *cpu)
   }
   return 0;
 }
+
 static int get_code_memory_index_from_pc(const int pc)
 {
   return (pc - 4000) / 4;
 }
+
 static void printContentsOfFreeRegistersList(APEX_CPU *cpu)
 {
   int free_reg_count = 0;
@@ -234,7 +242,7 @@ static void print_instruction(const CPU_Stage *stage)
   }
   }
 }
-static void print_fun_unit(const char *name, const CPU_Stage *stage)
+static void print_fu_unit(const char *name, const CPU_Stage *stage)
 {
   printf("Instruction at %-18s---> pc(%d) ", name, stage->pc);
   switch (stage->opcode)
@@ -303,7 +311,8 @@ static void print_fun_unit(const char *name, const CPU_Stage *stage)
   }
   printf("\n");
 }
-static void print_issueQueue(APEX_CPU *cpu)
+
+static void display_issueQueue(APEX_CPU *cpu)
 {
   printf("IQ contents are:\n");
   for (int i = 0; i < IQ_SIZE; i++)
@@ -388,10 +397,9 @@ int print_register_state(APEX_CPU *cpu)
   printf("\n=============== STATE OF ARCHITECTURAL REGISTER FILE ==========\n");
   int no_of_ins = 0;
   int no_registers = 8;
-  while (no_of_ins < no_registers)
+  for (;no_of_ins < no_registers;no_of_ins++)
   {
     printf("| \t REG[%d] \t | \t Value = %d \t | \t Status = %s \t \n", no_of_ins, cpu->regs[no_of_ins], (!cpu->valid_regs[no_of_ins] ? "VALID" : "INVALID"));
-    no_of_ins++;
   }
   return 0;
 }
@@ -402,14 +410,13 @@ int print_data_memory(APEX_CPU *cpu)
   printf("\n");
   int no_of_ins = 0;
   int count = 0;
-  while (no_of_ins < 100)
+  for (;no_of_ins < 100;no_of_ins++)
   {
     if (cpu->data_memory[no_of_ins] != 0)
     {
       printf("MEM[%d]  = %d\n", no_of_ins, cpu->data_memory[no_of_ins]);
       count++;
     }
-    no_of_ins++;
   }
   printf("\n");
   if (count == 0)
@@ -542,7 +549,7 @@ static void APEX_fetch(APEX_CPU *cpu)
  */
 static void APEX_decode(APEX_CPU *cpu)
 {
-  if (isRegisterQueueEmpty(cpu->freePhysicalRegister) == 1)
+  if (cpu->freePhysicalRegister->size == 0)
   {
     cpu->decode.stalled = 1; // set this flag to 0 in the code
   }
@@ -562,7 +569,7 @@ static void APEX_decode(APEX_CPU *cpu)
     case OPCODE_XOR:
     {
       // step1 allocate a free physical register for destination register
-      int free = getRegister(cpu->freePhysicalRegister);
+      int free = retreiveRegister(cpu->freePhysicalRegister);
 
       // step2 lookup the rename table for most recent instances of source registers
       // src1
@@ -598,7 +605,7 @@ static void APEX_decode(APEX_CPU *cpu)
     }
     case OPCODE_MOVC:
     {
-      int free = getRegister(cpu->freePhysicalRegister);
+      int free = retreiveRegister(cpu->freePhysicalRegister);
 
       cpu->rename_table[cpu->decode.rd] = free;
       cpu->physicalregs[free].isValid = 1;
@@ -621,7 +628,7 @@ static void APEX_decode(APEX_CPU *cpu)
     case OPCODE_LOAD:
     {
       // step 1
-      int free = getRegister(cpu->freePhysicalRegister);
+      int free = retreiveRegister(cpu->freePhysicalRegister);
       // step 2
       // src1
       cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
@@ -729,7 +736,7 @@ static void APEX_decode(APEX_CPU *cpu)
   {
     if (ENABLE_DEBUG_MESSAGES)
     {
-      if (!(cpu->dispatch.stalled || isIssueQueueFull(cpu)))
+      if (!(cpu->dispatch.stalled || isIssueQueuecompletelyFull(cpu)))
       {
         cpu->dispatch = cpu->decode;
       }
@@ -750,7 +757,7 @@ static void APEX_decode(APEX_CPU *cpu)
 }
 static void APEX_dispatch(APEX_CPU *cpu)
 {
-  if (cpu->dispatch.has_insn && cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
+  if (cpu->dispatch.has_insn && cpu->dispatch.stalled == 0 && isIssueQueuecompletelyFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
   {
     switch (cpu->dispatch.opcode)
     {
@@ -881,7 +888,7 @@ static void APEX_dispatch(APEX_CPU *cpu)
     }
     }
 
-    if (cpu->dispatch.stalled == 0 && isIssueQueueFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
+    if (cpu->dispatch.stalled == 0 && isIssueQueuecompletelyFull(cpu) == 0 && (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity) && (cpu->loadStoreQueue->size != cpu->loadStoreQueue->capacity))
     {
       int free_IQ = -1;
       for (int i = 0; i < IQ_SIZE; i++)
@@ -912,10 +919,10 @@ static void APEX_dispatch(APEX_CPU *cpu)
       // updating ROB for all instructions
       if (cpu->reorderBuffer->size != cpu->reorderBuffer->capacity)
       {
-        cpu->reorderBuffer->tail = (cpu->reorderBuffer->tail + 1) % cpu->reorderBuffer->capacity;
-        cpu->reorderBuffer->array[cpu->reorderBuffer->tail] = cpu->dispatch;
+        cpu->reorderBuffer->rear = (cpu->reorderBuffer->rear + 1) % cpu->reorderBuffer->capacity;
+        cpu->reorderBuffer->array[cpu->reorderBuffer->rear] = cpu->dispatch;
         cpu->reorderBuffer->size = cpu->reorderBuffer->size + 1;
-        cpu->reorderBuffer->array[cpu->reorderBuffer->tail].lsq_index = cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].lsq_index;
+        cpu->reorderBuffer->array[cpu->reorderBuffer->rear].lsq_index = cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].lsq_index;
       }
       if (ENABLE_DEBUG_MESSAGES)
       {
@@ -1139,9 +1146,9 @@ void printROB(APEX_CPU *cpu)
 {
   if (cpu->reorderBuffer->size != 0)
   {
-    printf("ROB contents are:\n");
+    printf("\nROB contents are:\n");
     int j = 1;
-    for (int i = cpu->reorderBuffer->head; i <= cpu->reorderBuffer->tail; i++)
+    for (int i = cpu->reorderBuffer->front; i <= cpu->reorderBuffer->rear; i++)
     {
       printf("%d.", j);
       j++;
@@ -1458,13 +1465,13 @@ static void APEX_intFU(APEX_CPU *cpu)
       array1[0] = cpu->intFU.dest;
       array1[1] = cpu->intFU.result_buffer;
 
-      add_at_rear(&cpu->head, array1);
+      add_Newdata(&cpu->head, array1);
     }
     cpu->intFU.has_insn = FALSE;
 
     if (ENABLE_DEBUG_MESSAGES)
     {
-      print_fun_unit("intFU", &cpu->intFU);
+      print_fu_unit("intFU", &cpu->intFU);
     }
   }
   else
@@ -1506,28 +1513,35 @@ static void APEX_mulFU(APEX_CPU *cpu)
     }
     array2[0] = cpu->mulFU.dest;
     array2[1] = cpu->mulFU.result_buffer;
-    add_at_rear(&cpu->head, array2);
+    add_Newdata(&cpu->head, array2);
     cpu->mulFU.has_insn = FALSE;
     mul_count = 0;
 
     if (ENABLE_DEBUG_MESSAGES)
     {
-      print_stage_content("mulFU", &cpu->mulFU);
+      print_stage_content("mulFU4", &cpu->mulFU);
+      for(int i=3;i>0;i--){
+      printf("Instruction at mulFU%d             ---> Empty \n",i);
+      }
     }
   }
   else if (cpu->mulFU.has_insn && cpu->mulFU.stalled == 0)
   {
     mul_count++;
-    if (ENABLE_DEBUG_MESSAGES)
-    {
-      print_stage_content("mulFU", &cpu->mulFU);
-    }
+      for(int i=4;i>0;i--){
+      printf("Instruction at mulFU%d             ---> Empty \n",i);
+      if(i==mul_count){
+       print_stage_content("mulFU", &cpu->mulFU);
+      }
+      }
   }
   else
   {
     if (ENABLE_DEBUG_MESSAGES)
     {
-      print_stage_empty("mulFU");
+      for(int i=4;i>0;i--){
+      printf("Instruction at mulFU%d             ---> Empty \n",i);
+      }
     }
   }
 }
@@ -1593,7 +1607,7 @@ static void APEX_logicalopFU(APEX_CPU *cpu)
     }
     array3[0] = cpu->logicalopFU.dest;
     array3[1] = cpu->logicalopFU.result_buffer;
-    add_at_rear(&cpu->head, array3);
+    add_Newdata(&cpu->head, array3);
     cpu->logicalopFU.has_insn = FALSE;
 
     if (ENABLE_DEBUG_MESSAGES)
@@ -1610,16 +1624,16 @@ static void APEX_logicalopFU(APEX_CPU *cpu)
   }
 }
 
-void list_to_bus(APEX_CPU *cpu)
+void moveDatatobus(APEX_CPU *cpu)
 {
-  if (isEmpty(cpu->head) == 0)
+  if (cpu->head != NULL)
   {
     if (cpu->bus0.busy == 0)
     {
       Forwarding_Bus_0_tagpart(cpu);
     }
   }
-  if (isEmpty(cpu->head) == 0)
+  if (cpu->head != NULL)
   {
     if (cpu->bus1.busy == 0)
     {
@@ -1637,7 +1651,7 @@ void Forwarding_Bus_0_tagpart(APEX_CPU *cpu)
   cpu->bus0.next_data_bus = cpu->head->data_values[1];
   // remove from the list
   int returnarray2[2];
-  remove_at_front(&cpu->head, returnarray2);
+  removeDataAtPosiiton(&cpu->head, returnarray2);
   cpu->bus0.busy = 0;
 }
 void Forwarding_Bus_0_datapart(APEX_CPU *cpu)
@@ -1645,7 +1659,7 @@ void Forwarding_Bus_0_datapart(APEX_CPU *cpu)
   if (cpu->bus0.bus_was_busy == 1)
   {
     cpu->bus0.data_part = cpu->bus0.next_data_bus;
-    print_bus0(cpu);
+   // print_bus0(cpu);
     cpu->physicalregs[cpu->bus0.tag_part].value = cpu->bus0.data_part;
     cpu->physicalregs[cpu->bus0.tag_part].isValid = 0;
     cpu->bus0.bus_was_busy = 0;
@@ -1661,7 +1675,7 @@ void Forwarding_Bus_1_tagpart(APEX_CPU *cpu)
   cpu->bus1.next_data_bus = cpu->head->data_values[1];
   // remove from the list
   int returnarray[2];
-  remove_at_front(&cpu->head, returnarray);
+  removeDataAtPosiiton(&cpu->head, returnarray);
   cpu->bus1.busy = 0;
 }
 void Forwarding_Bus_1_datapart(APEX_CPU *cpu)
@@ -1669,7 +1683,7 @@ void Forwarding_Bus_1_datapart(APEX_CPU *cpu)
   if (cpu->bus1.bus_was_busy == 1)
   {
     cpu->bus1.data_part = cpu->bus1.next_data_bus;
-    print_bus1(cpu);
+    //print_bus1(cpu);
     cpu->physicalregs[cpu->bus1.tag_part].value = cpu->bus1.data_part;
     cpu->physicalregs[cpu->bus1.tag_part].isValid = 0;
     cpu->bus1.bus_was_busy = 0;
@@ -1724,36 +1738,34 @@ static void APEX_dcatche_ops(APEX_CPU *cpu)
  */
   for (int i = cpu->loadStoreQueue->front; i <= cpu->loadStoreQueue->rear; i++)
   {
-  switch (cpu->loadStoreQueue->array[i].opcode)
-  {
-  case OPCODE_LOAD:
-  case OPCODE_LDR:
-  {
+    switch (cpu->loadStoreQueue->array[i].opcode)
+    {
+      case OPCODE_LOAD:
+      case OPCODE_LDR:
+      {
+          cpu->loadStoreQueue->array[i].result_buffer = cpu->data_memory[cpu->loadStoreQueue->array[i].memory_address];
+          cpu->decode.stalled = 0;
+          break;
+      }
 
-    cpu->loadStoreQueue->array[i].result_buffer = cpu->data_memory[cpu->loadStoreQueue->array[i].memory_address];
-    cpu->decode.stalled = 0;
-    break;
-  }
-
-  case OPCODE_STORE:
-  case OPCODE_STR:
-  {
-    
-    cpu->data_memory[cpu->loadStoreQueue->array[i].memory_address] = cpu->loadStoreQueue->array[i].result_buffer;
-    break;
-  }
-  default:
-  {
-    break;
-  }
-  }
+      case OPCODE_STORE:
+      case OPCODE_STR:
+      {
+        cpu->data_memory[cpu->loadStoreQueue->array[i].memory_address] = cpu->loadStoreQueue->array[i].result_buffer;
+        break;
+      }
+      default:
+      {
+        break;
+      }
+    }
   }
 }
 int commit_on_archs(APEX_CPU *cpu)
 {
-  if (cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest].isValid == 0 && cpu->reorderBuffer->size != 0)
+  if (cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].isValid == 0 && cpu->reorderBuffer->size != 0)
   {
-    switch (cpu->reorderBuffer->array[cpu->reorderBuffer->head].opcode)
+    switch (cpu->reorderBuffer->array[cpu->reorderBuffer->front].opcode)
     {
     case OPCODE_ADD:
     case OPCODE_MOVC:
@@ -1766,7 +1778,7 @@ int commit_on_archs(APEX_CPU *cpu)
     case OPCODE_OR:
     case OPCODE_XOR:
     {
-      cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].rd] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->head].dest].value;
+      cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].rd] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].value;
       break;
     }
      case OPCODE_LOAD:
@@ -1800,10 +1812,10 @@ int commit_on_archs(APEX_CPU *cpu)
     }
     }
 
-    insertRegister(cpu->freePhysicalRegister, 0);
+    assignRegister(cpu->freePhysicalRegister, 0);
 
     // delete at the head of ROB
-    cpu->reorderBuffer->head = (cpu->reorderBuffer->head + 1) % cpu->reorderBuffer->capacity;
+    cpu->reorderBuffer->front = (cpu->reorderBuffer->front + 1) % cpu->reorderBuffer->capacity;
     cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
     cpu->insn_completed++;
   }
@@ -1843,12 +1855,12 @@ APEX_CPU *APEX_cpu_init(const char *filename)
     free(cpu);
     return NULL;
   }
-  cpu->freePhysicalRegister = createQueue(15);
-  cpu->reorderBuffer = createROBQueue(12);
-  cpu->loadStoreQueue = createLSQQueue(4);
+  cpu->freePhysicalRegister = establishQueueByCapacity(15);
+  cpu->reorderBuffer = establishROBQueueByCapacity(12);
+  cpu->loadStoreQueue = establishLSQQueueByCapacity(4);
   for (int i = 0; i < 15; i++)
   {
-    insertRegister(cpu->freePhysicalRegister, i);
+    assignRegister(cpu->freePhysicalRegister, i);
   }
   for (int i = 0; i < 9; i++)
   {
@@ -1876,24 +1888,37 @@ APEX_CPU *APEX_cpu_init(const char *filename)
   cpu->fetch.has_insn = TRUE;
   return cpu;
 }
+
 /*
  * APEX CPU simulation loop
  *
  * Note: You are free to edit this function according to your implementation
  */
-void APEX_cpu_run(APEX_CPU *cpu)
+void APEX_cpu_run(APEX_CPU *cpu,const char *mode ,int cycles)
 {
   char user_prompt_val;
-
+  int Non_stop = 1;
   while (TRUE)
   {
+    if(strcmp(mode,"simulate") == 0 || strcmp(mode,"display") == 0)
+    {
+      Non_stop = 0;
+      if(cycles == 0)
+      {
+        break;
+      }
+      else 
+      {
+        cycles = cycles - 1;
+      }
+    }
     if (ENABLE_DEBUG_MESSAGES)
     {
       printf("--------------------------------------------\n");
       printf("Clock Cycle #: %d\n", cpu->clock + 1);
       printf("--------------------------------------------\n");
     }
-    printList(cpu->head);
+    //printList(cpu->head);
     if (cpu->bus1.bus_was_busy == 1)
     {
       Forwarding_Bus_1_datapart(cpu);
@@ -1902,33 +1927,28 @@ void APEX_cpu_run(APEX_CPU *cpu)
     {
       Forwarding_Bus_0_datapart(cpu);
     }
-    list_to_bus(cpu);
+    moveDatatobus(cpu);
     if (commit_on_archs(cpu))
     {
       break;
     }
+     //printROB(cpu);
     APEX_mulFU(cpu);
     APEX_logicalopFU(cpu);
     APEX_intFU(cpu);
-    // printf("at intfu tag is %d and value is %d for src1 , and tag is %d and value is %d for src2\n",cpu->intFU.src1_tag,cpu->intFU.src1_value,cpu->intFU.src2_tag,cpu->intFU.src2_value);
-    printROB(cpu);
-    printLSQ(cpu);
-    print_issueQueue(cpu);
     APEX_issueQueueUpdate(cpu);
     APEX_dispatch(cpu);
-    // printf("at disp tag is %d and value is %d for src1 , and tag is %d and value is %d for src2\n",cpu->dispatch.src1_tag,cpu->dispatch.src1_value,cpu->dispatch.src2_tag,cpu->dispatch.src2_value);
     APEX_decode(cpu);
-    // printf("at decode tag is %d and value is %d for src1 , and tag is %d and value is %d for src2\n",cpu->decode.src1_tag,cpu->decode.src1_value,cpu->decode.src2_tag,cpu->decode.src2_value);
     APEX_fetch(cpu);
 
-    printf("\nFlag contents: Z = %d\n\n", cpu->zero_flag);
-    printContentsOfFreeRegistersList(cpu);
+    //printf("\nFlag contents: Z = %d\n\n", cpu->zero_flag);
+    //printContentsOfFreeRegistersList(cpu);
     // print_physical_register_state(cpu);
-    print_rename_table(cpu);
+    //print_rename_table(cpu);
     print_reg_file(cpu);
     print_data_memory(cpu);
 
-    if (cpu->single_step)
+    if (cpu->single_step && Non_stop)
     {
       printf("Press any key to next CPU clock or <q> to quit:\n");
       scanf("%c", &user_prompt_val);
@@ -1943,10 +1963,15 @@ void APEX_cpu_run(APEX_CPU *cpu)
     cpu->clock++;
   }
   printf("APEX_CPU: Simulation Complete, cycles = %d instructions = %d\n", cpu->clock + 1, cpu->insn_completed);
-  print_physical_register_state(cpu);
-  print_reg_file(cpu);
-  print_register_state(cpu);
-  print_data_memory(cpu);
+  if(strcmp(mode,"display") == 0 ){
+   printROB(cpu);
+   printLSQ(cpu);
+   display_issueQueue(cpu);
+  }
+   //print_physical_register_state(cpu);
+   print_reg_file(cpu);
+   //print_register_state(cpu);
+   print_data_memory(cpu);
 }
 /*
  * This function deallocates APEX CPU.
@@ -1959,23 +1984,9 @@ void APEX_cpu_stop(APEX_CPU *cpu)
   free(cpu);
 }
 
-/*
- * Register Queue
- * */
-
-int isRegisterQueueFull(struct PhysicalRegistersQueue *queue)
+void assignRegister(struct PhyRegfile *queue, int item)
 {
-  return (queue->size == queue->capacity);
-}
-
-int isRegisterQueueEmpty(struct PhysicalRegistersQueue *queue)
-{
-  return (queue->size == 0);
-}
-
-void insertRegister(struct PhysicalRegistersQueue *queue, int item)
-{
-  if (isRegisterQueueFull(queue))
+  if (queue->size == queue->capacity)
   {
     return;
   }
@@ -1986,9 +1997,9 @@ void insertRegister(struct PhysicalRegistersQueue *queue, int item)
   queue->size = queue->size + 1;
 }
 
-int getRegister(struct PhysicalRegistersQueue *queue)
+int retreiveRegister(struct PhyRegfile *queue)
 {
-  if (isRegisterQueueEmpty(queue))
+  if (queue->size == 0)
     return -1;
   int item = queue->array[queue->front];
   queue->front = (queue->front + 1) % queue->capacity;
@@ -1996,25 +2007,11 @@ int getRegister(struct PhysicalRegistersQueue *queue)
   return item;
 }
 
-int registerQueueFront(struct PhysicalRegistersQueue *queue)
-{
-  if (isRegisterQueueEmpty(queue))
-    return -1;
-  return queue->array[queue->front];
-}
-
-int registerQueueRear(struct PhysicalRegistersQueue *queue)
-{
-  if (isRegisterQueueEmpty(queue))
-    return -1;
-  return queue->array[queue->rear];
-}
-
+// need this?
 /*
  * Issue Queue
  * */
-
-int isIssueQueueFull(APEX_CPU *cpu)
+int isIssueQueuecompletelyFull(APEX_CPU *cpu)
 {
   for (int i = 0; i < IQ_SIZE; i++)
   {
