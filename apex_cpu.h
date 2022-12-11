@@ -143,14 +143,17 @@ typedef struct APEX_CPU
     CPU_Stage dispatch;
     CPU_Stage issueQueue[8];
     CPU_Stage intFU;
-    CPU_Stage mulFU;
+    CPU_Stage mulFU1;
+    CPU_Stage mulFU2;
+    CPU_Stage mulFU3;
+    CPU_Stage mulFU4;
     CPU_Stage logicalopFU;
 } APEX_CPU;
 
 APEX_Instruction *create_code_memory(const char *filename, int *size);
 APEX_CPU *APEX_cpu_init(const char *filename);
-void Forwarding_Bus_0_tagpart(APEX_CPU *cpu);
-void Forwarding_Bus_1_tagpart(APEX_CPU *cpu);
+void Forwarding_Bus_0(APEX_CPU *cpu);
+void Forwarding_Bus_1(APEX_CPU *cpu);
 //ROB
 void printROB(APEX_CPU *cpu);
 
