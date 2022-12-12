@@ -46,3 +46,10 @@ A template for 5 Stage APEX In-order Pipeline
 
  - Please contact your TAs for any assistance or query
  - Report bugs at: gkothar1@binghamton.edu
+
+
+
+
+ order of printing contents are:
+
+ 

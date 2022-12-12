@@ -25,7 +25,6 @@ main(int argc, char const *argv[])
         fprintf(stderr, "APEX_Help: Usage %s <input_file>\n", argv[0]);
         exit(1);
     }
-    printf("-------------------------------%d\n",argc);
     cpu = APEX_cpu_init(argv[1]);
     if (!cpu)
     {

@@ -82,6 +82,7 @@ typedef struct CPU_Stage
     int src3_value;   // value of third source register            rs3 
     int dtype;
     int dest;  //LSQ index or physical register address eg p'8' .  rd
+    int prev_dest;
     //ROB variables
     int rob_valid;
 
@@ -142,6 +143,8 @@ typedef struct APEX_CPU
     CPU_Stage decode;
     CPU_Stage dispatch;
     CPU_Stage issueQueue[8];
+    CPU_Stage LSQ[4];
+    CPU_Stage ROB[12];
     CPU_Stage intFU;
     CPU_Stage mulFU1;
     CPU_Stage mulFU2;
