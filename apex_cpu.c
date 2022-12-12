@@ -362,7 +362,7 @@ int print_register_state(APEX_CPU *cpu)
 {
   printf("\n=============== STATE OF ARCHITECTURAL REGISTER FILE ==========\n");
   int no_of_ins = 0;
-  int no_registers = 8;
+  int no_registers = REG_FILE_SIZE;
   for (;no_of_ins < no_registers;no_of_ins++)
   {
     printf("| \t REG[%d] \t | \t Value = %d \t | \t Status = %s \t \n", no_of_ins, cpu->regs[no_of_ins], (!cpu->valid_regs[no_of_ins] ? "VALID" : "INVALID"));
@@ -1437,7 +1437,7 @@ static void APEX_intFU(APEX_CPU *cpu)
     }
     case OPCODE_JUMP:
     {
-      cpu->pc = cpu->intFU.pc + (cpu->intFU.imm + cpu->intFU.src1_value);
+      cpu->pc = cpu->intFU.imm + cpu->intFU.src1_value;
         
         cpu->fetch_from_next_cycle = TRUE;
 
@@ -2006,9 +2006,9 @@ APEX_CPU *APEX_cpu_init(const char *filename)
     free(cpu);
     return NULL;
   }
-  cpu->freePhysicalRegister = establishQueueByCapacity(15);
-  cpu->reorderBuffer = establishROBQueueByCapacity(12);
-  cpu->loadStoreQueue = establishLSQQueueByCapacity(4);
+  cpu->freePhysicalRegister = establishQueueByCapacity(PREG_FILE_SIZE);
+  cpu->reorderBuffer = establishROBQueueByCapacity(ROB_SIZE);
+  cpu->loadStoreQueue = establishLSQQueueByCapacity(LSQ_SIZE);
   for (int i = 0; i < 15; i++)
   {
     assignRegister(cpu->freePhysicalRegister, i);
@@ -2017,7 +2017,7 @@ APEX_CPU *APEX_cpu_init(const char *filename)
   {
     cpu->rename_table[i] = -1;
   }
-  memset(cpu->issueQueue, 0, sizeof(APEX_Instruction) * 8);
+  memset(cpu->issueQueue, 0, sizeof(APEX_Instruction) * IQ_SIZE);
   if (ENABLE_DEBUG_MESSAGES)
   {
     fprintf(stderr,
@@ -2092,7 +2092,7 @@ void APEX_cpu_run(APEX_CPU *cpu,const char *mode ,int cycles)
     moveDatatobus(cpu);
     
     //update issue Queue and transfer instructions to FU's
-   // display_issueQueue(cpu); 
+    //display_issueQueue(cpu); 
     APEX_issueQueueUpdate(cpu);
     
     //Dispatch, Decode, Fetch

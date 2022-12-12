@@ -142,9 +142,7 @@ typedef struct APEX_CPU
     CPU_Stage fetch;
     CPU_Stage decode;
     CPU_Stage dispatch;
-    CPU_Stage issueQueue[8];
-    CPU_Stage LSQ[4];
-    CPU_Stage ROB[12];
+    CPU_Stage issueQueue[IQ_SIZE];
     CPU_Stage intFU;
     CPU_Stage mulFU1;
     CPU_Stage mulFU2;

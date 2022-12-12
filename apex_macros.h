@@ -20,7 +20,7 @@
 #define PREG_FILE_SIZE 15
 #define IQ_SIZE 8
 #define ROB_SIZE 12
-#define IQ_SIZE 8
+#define LSQ_SIZE 4
 
 /* Numeric OPCODE identifiers for instructions */
 #define OPCODE_ADD 0x0
