@@ -93,9 +93,9 @@ typedef struct CPU_Stage
     int mem_valid;
     int memory_address;
     int dest_reg_forLOAD;
-    //for store use src1 valid bit tag bit valid bit
+    //BTB
+    int hit_or_miss;
    
-
 } CPU_Stage;
 
 typedef struct ReorderBuffer {
@@ -105,6 +105,14 @@ typedef struct ReorderBuffer {
     unsigned capacity;
     CPU_Stage * array;
 }ReorderBuffer;
+
+typedef struct BranchBuffer {
+    int front;
+    int rear;
+    int size;
+    unsigned capacity;
+    CPU_Stage * array;
+}BranchBuffer;
 
 typedef struct LoadStoreFile{
     int front;
@@ -136,6 +144,7 @@ typedef struct APEX_CPU
     
     PhyRegfile* freePhysicalRegister;
     ReorderBuffer* reorderBuffer;
+    BranchBuffer* branchBuffer;
     LoadStoreFile* loadStoreQueue;
     
     /* Pipeline stages */
