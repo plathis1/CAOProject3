@@ -18,8 +18,7 @@
 
 // ROB
 int index_ins = 100; // started at 100 increases by 5
-int mul_count = 0;
-int array2[2];
+int array2[3];
 struct ReorderBuffer *establishROBQueueByCapacity(unsigned capacity)
 {
   struct ReorderBuffer *rob = (struct ReorderBuffer *)malloc(sizeof(struct ReorderBuffer));
@@ -64,6 +63,7 @@ void add_Newdata(struct Node **head_ref_cpu, int new_data[])
   struct Node *last = *head_ref_cpu;
   new_node->data_values[0] = new_data[0];
   new_node->data_values[1] = new_data[1];
+  new_node->data_values[2] = new_data[2];
   new_node->next = NULL;
   if (*head_ref_cpu == NULL)
   {
@@ -86,6 +86,7 @@ int *removeDataAtPosiiton(struct Node **head_ref_cpu, int *returnarray)
   {
     returnarray[0] = (*head_ref_cpu)->data_values[0];
     returnarray[1] = (*head_ref_cpu)->data_values[1];
+    returnarray[2] = (*head_ref_cpu)->data_values[2];
     *head_ref_cpu = temp->next;
     free(temp);
     return returnarray;
@@ -107,12 +108,12 @@ void printList(struct Node *node)
 }
 void print_bus0(APEX_CPU *cpu)
 {
-  printf("Bus 0 have values %d and %d\n", cpu->bus0.tag_part, cpu->bus0.data_part);
+  printf("Bus 0 have values %d, %d and %d\n", cpu->bus0.tag_part, cpu->bus0.data_part, cpu->bus0.flag_part);
 }
 
 void print_bus1(APEX_CPU *cpu)
 {
-  printf("Bus 1 have values %d and %d\n", cpu->bus1.tag_part, cpu->bus1.data_part);
+  printf("Bus 1 have values %d, %d and %d\n", cpu->bus1.tag_part, cpu->bus1.data_part, cpu->bus1.flag_part);
 }
 
 int print_physical_register_state(APEX_CPU *cpu)
@@ -129,13 +130,15 @@ int print_physical_register_state(APEX_CPU *cpu)
 int print_rename_table(APEX_CPU *cpu)
 {
   printf("Rename table contents are:\n");
-  for (int i = 0; i < 9; i++)
+  int i = 0;
+  for (i = 0; i < REG_FILE_SIZE; i++)
   {
     if (cpu->rename_table[i] != -1)
     {
       printf("R[%d] --> P%d ---->and value=%d\n", i, cpu->rename_table[i], cpu->physicalregs[cpu->rename_table[i]].value);
     }
   }
+  printf("R[%d] --> CC ---->and value=%d\n", i, cpu->physicalregs[cpu->rename_table[i]].zeroFlag);
   return 0;
 }
 
@@ -485,13 +488,13 @@ static void APEX_fetch(APEX_CPU *cpu)
 
     switch (cpu->fetch.opcode)
     {
-      case OPCODE_BNZ:
-      case OPCODE_BZ:
-                   {
+    case OPCODE_BNZ:
+    case OPCODE_BZ:
+    {
       if (cpu->branchBuffer->size != cpu->branchBuffer->capacity)
       {
         int count = 0;
-        for (int i = cpu->branchBuffer->front; i < cpu->branchBuffer->rear; i++)
+        for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
         {
           if (cpu->branchBuffer->array[i].pc == cpu->fetch.pc)
           {
@@ -505,7 +508,7 @@ static void APEX_fetch(APEX_CPU *cpu)
           cpu->branchBuffer->size = cpu->branchBuffer->size + 1;
         }
       }
-     
+
       break;
     }
 
@@ -519,9 +522,12 @@ static void APEX_fetch(APEX_CPU *cpu)
     {
       /* Update PC for next instruction */
       cpu->pc += 4;
-      if (strcmp(cpu->fetch.opcode_str, "BNZ") == 1 || strcmp(cpu->fetch.opcode_str, "BZ") == 1)
+      switch (cpu->fetch.opcode)
       {
-        for (int i = cpu->branchBuffer->front; i < cpu->branchBuffer->rear; i++)
+      case OPCODE_BNZ:
+      case OPCODE_BZ:
+      {
+        for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
         {
           if (cpu->branchBuffer->array[i].pc == cpu->fetch.pc)
           {
@@ -531,6 +537,11 @@ static void APEX_fetch(APEX_CPU *cpu)
             }
           }
         }
+      }
+      default:
+      {
+        break;
+      }
       }
 
       /* Copy data from fetch latch to decode latch*/
@@ -1293,7 +1304,7 @@ void printROB(APEX_CPU *cpu)
 
       case OPCODE_CMP:
       {
-        printf("%s,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2);
+        printf("%s,R%d,R%d,R%d\n", cpu->reorderBuffer->array[i].opcode_str, cpu->reorderBuffer->array[i].rd,cpu->reorderBuffer->array[i].rs1, cpu->reorderBuffer->array[i].rs2);
         break;
       }
       }
@@ -1308,7 +1319,7 @@ void printBTB(APEX_CPU *cpu)
     printf("BTB contents are:\n");
     for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
     {
-      printf("%d,%s,%d\n", cpu->branchBuffer->array[i].pc, cpu->branchBuffer->array[i].opcode_str,cpu->branchBuffer->array[i].hit_or_miss);
+      printf("%d,%s,%d\n", cpu->branchBuffer->array[i].pc, cpu->branchBuffer->array[i].opcode_str, cpu->branchBuffer->array[i].hit_or_miss);
     }
     printf("\n");
   }
@@ -1359,7 +1370,7 @@ void printLSQ(APEX_CPU *cpu)
 static void APEX_intFU(APEX_CPU *cpu)
 {
 
-  int array1[2];
+  int array1[3];
   if (cpu->intFU.has_insn && cpu->intFU.stalled == 0)
   {
     /* intFU logic based on instruction type */
@@ -1399,125 +1410,104 @@ static void APEX_intFU(APEX_CPU *cpu)
     case OPCODE_BZ:
     {
 
-      if (cpu->zero_flag == TRUE)
+      if (cpu->rename_table[8] == TRUE)
+      {
+        int hm;
+        for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
+        {
+          if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
+          {
+            hm = cpu->branchBuffer->array[i].hit_or_miss;
+          }
+        }
+        if (hm == 0)
+        {
+          cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
+
+          cpu->fetch_from_next_cycle = TRUE;
+          assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+          cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
+          cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+
+          cpu->dispatch.has_insn = FALSE;
+          cpu->decode.has_insn = FALSE;
+          cpu->fetch.has_insn = TRUE;
+
+          // ROB entries deleted
+          while (TRUE)
+          {
+            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+            {
+              break;
+            }
+            else if ( cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+            {
+              // delete rob entry from rear
+              cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+              cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+            }
+            else
+            {
+              break;
+            }
+          }
+          // IQ entries deleted
+          for (int i = IQ_SIZE-1; i >= 0; i--)
+          {
+            if (cpu->issueQueue[i].free_bit == 1)
+            {
+              if (cpu->issueQueue[i].pc == cpu->intFU.pc)
+              {
+                break;
+              }
+              else if ( cpu->issueQueue[i].pc > cpu->intFU.pc )
+              {
+                // delete rob entry from rear
+                cpu->issueQueue[i].free_bit = 0;
+
+                assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+                cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+              }
+              else
+              {
+                break;
+              }
+            }
+          }
+          // LSQ entries deleted
+          while (TRUE)
+          {
+            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+            {
+              break;
+            }
+            else if ( cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
+            {
+              // delete rob entry from rear
+              cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+              cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+            }
+            else
+            {
+              break;
+            }
+          }
+          for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
+          {
+            if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
+            {
+              cpu->branchBuffer->array[i].hit_or_miss = 1;
+            }
+          }
+        }
+      }
+      else
       {
         for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
         {
           if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
           {
-            cpu->branchBuffer->array[i].hit_or_miss = 1;
-          }
-        }
-        cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
-
-        cpu->fetch_from_next_cycle = TRUE;
-
-        assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-        cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-        cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
-
-        cpu->dispatch.has_insn = FALSE;
-        cpu->decode.has_insn = FALSE;
-        cpu->fetch.has_insn = TRUE;
-        if (cpu->intFU.imm > 0)
-        {
-          // ROB entries deleted
-          while (TRUE)
-          {
-            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
-            {
-              break;
-            }
-            else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
-            {
-              // delete rob entry from rear
-              cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
-              cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
-            }
-          }
-          // IQ entries deleted
-          for (int i = 0; i < IQ_SIZE; i++)
-          {
-            if (cpu->issueQueue[i].pc > cpu->intFU.pc)
-            {
-              cpu->issueQueue[i].free_bit = 0;
-
-              assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-              cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-              cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
-            }
-          }
-          // LSQ entries deleted
-          while (TRUE)
-          {
-            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
-            {
-              break;
-            }
-            else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
-            {
-              // delete lsq entry from rear
-              assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-              cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-              cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-              cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
-              cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
-            }
-          }
-        }
-        if (cpu->intFU.imm < 0)
-        {
-          // ROB entries deleted
-          while (TRUE)
-          {
-            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
-            {
-              break;
-            }
-            else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
-            {
-              // delete rob entry from rear
-              cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
-              cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
-            }
-          }
-          // IQ entries deleted
-          for (int i = 0; i < IQ_SIZE; i++)
-          {
-            if (cpu->issueQueue[i].pc > cpu->intFU.pc)
-            {
-              cpu->issueQueue[i].free_bit = 0;
-
-              assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-              cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-              cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
-            }
-          }
-          // LSQ entries deleted
-          while (TRUE)
-          {
-            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
-            {
-              break;
-            }
-            else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
-            {
-              // delete lsq entry from rear
-              assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-              cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-              cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-              cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
-              cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
-            }
-          }
-        }
-      }
-      else
-      {
-        for (int i = cpu->branchBuffer->front; i < cpu->branchBuffer->rear; i++)
-        {
-          if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
-          {
             if (cpu->branchBuffer->array[i].hit_or_miss == 1)
             {
               cpu->pc = cpu->intFU.pc + 4;
@@ -1530,25 +1520,49 @@ static void APEX_intFU(APEX_CPU *cpu)
               cpu->dispatch.has_insn = FALSE;
               cpu->decode.has_insn = FALSE;
               cpu->fetch.has_insn = TRUE;
-              
-                // ROB entries deleted
-                while (TRUE)
+              cpu->branchBuffer->array[i].hit_or_miss = 0;
+              // ROB entries deleted
+              while (TRUE)
+              {
+                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
                 {
-                  if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
+                  break;
+                }
+                else if (cpu->intFU.imm < 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
+                {
+                  // delete rob entry from rear
+                  cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+                  cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+                }
+                else if (cpu->intFU.imm > 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+                {
+                  // delete rob entry from rear
+                  cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+                  cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+                }
+                else
+                {
+                  break;
+                }
+              }
+              // IQ entries deleted
+              for (int i = IQ_SIZE-1; i >= 0; i--)
+              {
+                if (cpu->issueQueue[i].free_bit == 1)
+                {
+                  if (cpu->issueQueue[i].pc == cpu->intFU.pc)
                   {
                     break;
                   }
-                  else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+                  else if (cpu->intFU.imm < 0 && cpu->issueQueue[i].pc < cpu->intFU.pc)
                   {
-                    // delete rob entry from rear
-                    cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
-                    cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+
+                    cpu->issueQueue[i].free_bit = 0;
+                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
                   }
-                }
-                // IQ entries deleted
-                for (int i = 0; i < IQ_SIZE; i++)
-                {
-                  if (cpu->issueQueue[i].pc > cpu->intFU.pc)
+                  else if (cpu->intFU.imm > 0 && cpu->issueQueue[i].pc > cpu->intFU.pc)
                   {
                     cpu->issueQueue[i].free_bit = 0;
 
@@ -1556,102 +1570,143 @@ static void APEX_intFU(APEX_CPU *cpu)
                     cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
                     cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
                   }
-                }
-                // LSQ entries deleted
-                while (TRUE)
-                {
-                  if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+                  else
                   {
                     break;
                   }
-                  else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
-                  {
-                    // delete lsq entry from rear
-                    assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-                    cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                    cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-                    cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
-                    cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
-                  }
                 }
-              
+              }
+              // LSQ entries deleted
+              while (TRUE)
+              {
+                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+                {
+                  break;
+                }
+                else if (cpu->intFU.imm < 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+                }
+                else if (cpu->intFU.imm > 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+                }
+                else
+                {
+                  break;
+                }
+              }
             }
           }
         }
       }
       break;
-    }
-    case OPCODE_BNZ:
+    } case OPCODE_BNZ:
     {
 
-      if (cpu->zero_flag == FALSE)
+      if (cpu->rename_table[8] == FALSE)
       {
-        for (int i = cpu->branchBuffer->front; i < cpu->branchBuffer->rear; i++)
+        int hm;
+        for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
         {
           if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
           {
-            cpu->branchBuffer->array[i].hit_or_miss = 1;
+            hm = cpu->branchBuffer->array[i].hit_or_miss;
           }
         }
-        cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
-        cpu->fetch_from_next_cycle = TRUE;
+        if (hm == 0)
+        {
+          cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
 
-        assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-        cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-        cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+          cpu->fetch_from_next_cycle = TRUE;
+          assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+          cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
+          cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
 
-        cpu->dispatch.has_insn = FALSE;
-        cpu->decode.has_insn = FALSE;
-        cpu->fetch.has_insn = TRUE;
+          cpu->dispatch.has_insn = FALSE;
+          cpu->decode.has_insn = FALSE;
+          cpu->fetch.has_insn = TRUE;
 
           // ROB entries deleted
           while (TRUE)
           {
-            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
+            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
             {
               break;
             }
-            else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+            else if ( cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
             {
               // delete rob entry from rear
               cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
               cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
             }
+            else
+            {
+              break;
+            }
           }
           // IQ entries deleted
-          for (int i = 0; i < IQ_SIZE; i++)
+          for (int i = IQ_SIZE-1; i >= 0; i--)
           {
-            if (cpu->issueQueue[i].pc > cpu->intFU.pc)
+            if (cpu->issueQueue[i].free_bit == 1)
             {
-              cpu->issueQueue[i].free_bit = 0;
+              if (cpu->issueQueue[i].pc == cpu->intFU.pc)
+              {
+                break;
+              }
+              else if ( cpu->issueQueue[i].pc > cpu->intFU.pc )
+              {
+                // delete rob entry from rear
+                cpu->issueQueue[i].free_bit = 0;
 
-              assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-              cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-              cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+                cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+              }
+              else
+              {
+                break;
+              }
             }
           }
           // LSQ entries deleted
           while (TRUE)
           {
-            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
             {
               break;
             }
-            else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
+            else if ( cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
             {
-              // delete lsq entry from rear
-              assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-              cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-              cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+              // delete rob entry from rear
               cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
               cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
             }
+            else
+            {
+              break;
+            }
           }
-        
+          for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
+          {
+            if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
+            {
+              cpu->branchBuffer->array[i].hit_or_miss = 1;
+            }
+          }
+        }
       }
       else
       {
-        for (int i = cpu->branchBuffer->front; i < cpu->branchBuffer->rear; i++)
+        for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
         {
           if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
           {
@@ -1667,24 +1722,49 @@ static void APEX_intFU(APEX_CPU *cpu)
               cpu->dispatch.has_insn = FALSE;
               cpu->decode.has_insn = FALSE;
               cpu->fetch.has_insn = TRUE;
-                // ROB entries deleted
-                while (TRUE)
+              cpu->branchBuffer->array[i].hit_or_miss = 0;
+              // ROB entries deleted
+              while (TRUE)
+              {
+                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
                 {
-                  if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
+                  break;
+                }
+                else if (cpu->intFU.imm < 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc)
+                {
+                  // delete rob entry from rear
+                  cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+                  cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+                }
+                else if (cpu->intFU.imm > 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+                {
+                  // delete rob entry from rear
+                  cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+                  cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+                }
+                else
+                {
+                  break;
+                }
+              }
+              // IQ entries deleted
+              for (int i = IQ_SIZE-1; i >= 0; i--)
+              {
+                if (cpu->issueQueue[i].free_bit == 1)
+                {
+                  if (cpu->issueQueue[i].pc == cpu->intFU.pc)
                   {
                     break;
                   }
-                  else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+                  else if (cpu->intFU.imm < 0 && cpu->issueQueue[i].pc < cpu->intFU.pc)
                   {
-                    // delete rob entry from rear
-                    cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
-                    cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+
+                    cpu->issueQueue[i].free_bit = 0;
+                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
                   }
-                }
-                // IQ entries deleted
-                for (int i = 0; i < IQ_SIZE; i++)
-                {
-                  if (cpu->issueQueue[i].pc > cpu->intFU.pc)
+                  else if (cpu->intFU.imm > 0 && cpu->issueQueue[i].pc > cpu->intFU.pc)
                   {
                     cpu->issueQueue[i].free_bit = 0;
 
@@ -1692,29 +1772,44 @@ static void APEX_intFU(APEX_CPU *cpu)
                     cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
                     cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
                   }
-                }
-                // LSQ entries deleted
-                while (TRUE)
-                {
-                  if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+                  else
                   {
                     break;
                   }
-                  else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
-                  {
-                    // delete lsq entry from rear
-                    assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-                    cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                    cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-                    cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
-                    cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
-                  }
                 }
+              }
+              // LSQ entries deleted
+              while (TRUE)
+              {
+                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+                {
+                  break;
+                }
+                else if (cpu->intFU.imm < 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+                }
+                else if (cpu->intFU.imm > 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+                }
+                else
+                {
+                  break;
+                }
+              }
             }
           }
         }
       }
-
       break;
     }
     case OPCODE_JUMP:
@@ -1722,6 +1817,14 @@ static void APEX_intFU(APEX_CPU *cpu)
       cpu->pc = cpu->intFU.imm + cpu->intFU.src1_value;
 
       cpu->fetch_from_next_cycle = TRUE;
+      int hm;
+      for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
+      {
+        if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
+        {
+          hm = cpu->branchBuffer->array[i].hit_or_miss;
+        }
+      }
 
       assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
       cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
@@ -1734,48 +1837,115 @@ static void APEX_intFU(APEX_CPU *cpu)
       // ROB entries deleted
       while (TRUE)
       {
-        if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+        if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
         {
           break;
         }
-        else if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc)
+        else if ((cpu->intFU.imm > 0 || cpu->intFU.imm < 0) && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc && hm == 0)
         {
           // delete rob entry from rear
           cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
           cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
         }
+        else if (cpu->intFU.imm < 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc < cpu->intFU.pc && hm == 1)
+        {
+          // delete rob entry from rear
+          cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+          cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+        }
+        else if (cpu->intFU.imm > 0 && cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc > cpu->intFU.pc && hm == 1)
+        {
+          // delete rob entry from rear
+          cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+          cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+        }
+        else
+        {
+          break;
+        }
       }
       // IQ entries deleted
-      for (int i = 0; i < IQ_SIZE; i++)
+      for (int i = IQ_SIZE-1; i >= 0; i--)
       {
-        if (cpu->issueQueue[i].pc > cpu->intFU.pc)
+        if (cpu->issueQueue[i].free_bit == 1)
         {
-          cpu->issueQueue[i].free_bit = 0;
+          if (cpu->issueQueue[i].pc == cpu->intFU.pc)
+          {
+            break;
+          }
+          else if ((cpu->intFU.imm > 0 || cpu->intFU.imm < 0) && cpu->issueQueue[i].pc > cpu->intFU.pc && hm == 0)
+          {
+            // delete rob entry from rear
+            cpu->issueQueue[i].free_bit = 0;
 
-          assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-          cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-          cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+            assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+            cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+            cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+          }
+          else if (cpu->intFU.imm < 0 && cpu->issueQueue[i].pc < cpu->intFU.pc && hm == 1)
+          {
+            // delete rob entry from rear
+            cpu->issueQueue[i].free_bit = 0;
+
+            assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+            cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+            cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+          }
+          else if (cpu->intFU.imm > 0 && cpu->issueQueue[i].pc > cpu->intFU.pc && hm == 1)
+          {
+            // delete rob entry from rear
+            cpu->issueQueue[i].free_bit = 0;
+
+            assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+            cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
+            cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+          }
+          else
+          {
+            break;
+          }
         }
       }
       // LSQ entries deleted
       while (TRUE)
       {
-        if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
+        if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
         {
           break;
         }
-        else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
+        else if ((cpu->intFU.imm > 0 || cpu->intFU.imm < 0) && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc && hm == 0)
         {
-          // delete lsq entry from rear
-          assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
-          cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-          cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+          // delete rob entry from rear
           cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
           cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+        }
+        else if (cpu->intFU.imm < 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc && hm == 1)
+        {
+          // delete rob entry from rear
+          cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+          cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+        }
+        else if (cpu->intFU.imm > 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc && hm == 1)
+        {
+          // delete rob entry from rear
+          cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+          cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
+        }
+        else
+        {
+          break;
+        }
+      }
+      for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
+      {
+        if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
+        {
+          cpu->branchBuffer->array[i].hit_or_miss = 1;
         }
       }
       break;
     }
+
     case OPCODE_ADDL:
     {
       cpu->intFU.result_buffer = cpu->intFU.src1_value + cpu->intFU.imm;
@@ -1889,6 +2059,7 @@ static void APEX_intFU(APEX_CPU *cpu)
     {
       array1[0] = cpu->intFU.dest;
       array1[1] = cpu->intFU.result_buffer;
+      array1[2] = cpu->zero_flag;
 
       add_Newdata(&cpu->head, array1);
     }
@@ -2048,6 +2219,7 @@ static void APEX_mulFU4(APEX_CPU *cpu)
     }
     array2[0] = cpu->mulFU4.dest;
     array2[1] = cpu->mulFU4.result_buffer;
+    array2[2] = cpu->zero_flag;
     add_Newdata(&cpu->head, array2);
     cpu->mulFU4.has_insn = FALSE;
 
@@ -2067,7 +2239,7 @@ static void APEX_mulFU4(APEX_CPU *cpu)
 }
 static void APEX_logicalopFU(APEX_CPU *cpu)
 {
-  int array3[2];
+  int array3[3];
   if (cpu->logicalopFU.has_insn && cpu->logicalopFU.stalled == 0)
   {
 
@@ -2127,6 +2299,7 @@ static void APEX_logicalopFU(APEX_CPU *cpu)
     }
     array3[0] = cpu->logicalopFU.dest;
     array3[1] = cpu->logicalopFU.result_buffer;
+    array3[2] = cpu->zero_flag;
     add_Newdata(&cpu->head, array3);
     cpu->logicalopFU.has_insn = FALSE;
 
@@ -2167,11 +2340,15 @@ void Forwarding_Bus_0(APEX_CPU *cpu)
   // enable datapart foor next cycle and use next_dat_bus0
   cpu->bus0.tag_part = cpu->head->data_values[0];
   cpu->bus0.data_part = cpu->head->data_values[1];
+  cpu->bus0.flag_part = cpu->head->data_values[2];
   // print_bus0(cpu);
   cpu->physicalregs[cpu->bus0.tag_part].value = cpu->bus0.data_part;
+  cpu->physicalregs[cpu->bus0.tag_part].zeroFlag = cpu->bus0.flag_part;
+  cpu->rename_table[8] = cpu->bus0.flag_part;
   cpu->physicalregs[cpu->bus0.tag_part].isValid = 0;
+
   // remove from the list
-  int returnarray2[2];
+  int returnarray2[3];
   removeDataAtPosiiton(&cpu->head, returnarray2);
   cpu->bus0.busy = 0;
 }
@@ -2181,12 +2358,15 @@ void Forwarding_Bus_1(APEX_CPU *cpu)
 
   cpu->bus1.tag_part = cpu->head->data_values[0];
   cpu->bus1.data_part = cpu->head->data_values[1];
+  cpu->bus1.flag_part = cpu->head->data_values[2];
   // print_bus1(cpu);
   cpu->physicalregs[cpu->bus1.tag_part].value = cpu->bus1.data_part;
+  cpu->physicalregs[cpu->bus1.tag_part].zeroFlag = cpu->bus1.flag_part;
   cpu->physicalregs[cpu->bus1.tag_part].isValid = 0;
+  cpu->rename_table[8] = cpu->bus0.flag_part;
 
   // remove from the list
-  int returnarray[2];
+  int returnarray[3];
   removeDataAtPosiiton(&cpu->head, returnarray);
   cpu->bus1.busy = 0;
 }
@@ -2215,19 +2395,23 @@ int commit_on_archs(APEX_CPU *cpu)
     case OPCODE_LDR:
     {
       cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].rd] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].value;
-      break;
-    }
-    case OPCODE_STORE:
-    case OPCODE_STR:
-    {
+      cpu->cc[0] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].zeroFlag;
+      // free physical register
+      assignRegister(cpu->freePhysicalRegister, cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest);
       break;
     }
     case OPCODE_BZ:
     case OPCODE_JUMP:
     case OPCODE_BNZ:
     case OPCODE_NOP:
+    {
+      break;
+    }
     case OPCODE_CMP:
     {
+      cpu->cc[0] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].zeroFlag;
+      // free physical register
+      assignRegister(cpu->freePhysicalRegister, cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest);
       break;
     }
     case OPCODE_HALT:
@@ -2242,8 +2426,6 @@ int commit_on_archs(APEX_CPU *cpu)
     }
     }
 
-    assignRegister(cpu->freePhysicalRegister, cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest);
-
     // delete at the head of ROB
 
     cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
@@ -2253,6 +2435,28 @@ int commit_on_archs(APEX_CPU *cpu)
     }
     cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
     cpu->insn_completed++;
+  }
+  else if (cpu->reorderBuffer->size != 0)
+  {
+    switch (cpu->reorderBuffer->array[cpu->reorderBuffer->front].opcode)
+    {
+    case OPCODE_STORE:
+    case OPCODE_STR:
+    {
+      cpu->reorderBuffer->size = cpu->reorderBuffer->size - 1;
+      for (int k = cpu->reorderBuffer->front; k < cpu->reorderBuffer->rear; k++)
+      {
+        cpu->reorderBuffer->array[k] = cpu->reorderBuffer->array[k + 1];
+      }
+      cpu->reorderBuffer->rear = cpu->reorderBuffer->rear - 1;
+      cpu->insn_completed++;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
   }
   return 0;
 }
@@ -2301,10 +2505,12 @@ APEX_CPU *APEX_cpu_init(const char *filename)
   {
     assignRegister(cpu->freePhysicalRegister, i);
   }
-  for (int i = 0; i < 9; i++)
+  int k = 0;
+  for (k = 0; k < REG_FILE_SIZE; k++)
   {
-    cpu->rename_table[i] = -1;
+    cpu->rename_table[k] = -1;
   }
+  cpu->rename_table[k] = cpu->cc[0];
   memset(cpu->issueQueue, 0, sizeof(APEX_Instruction) * IQ_SIZE);
   if (ENABLE_DEBUG_MESSAGES)
   {
@@ -2365,8 +2571,8 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
       break;
     }
     APEX_LSQueueUpdate(cpu);
-    //printROB(cpu);
-    //printLSQ(cpu);
+    printROB(cpu);
+    printLSQ(cpu);
 
     // Function units implemented
     APEX_mulFU4(cpu);
@@ -2380,16 +2586,16 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
     moveDatatobus(cpu);
 
     // update issue Queue and transfer instructions to FU's
-    //display_issueQueue(cpu);
+    display_issueQueue(cpu);
     APEX_issueQueueUpdate(cpu);
 
     // Dispatch, Decode, Fetch
     APEX_dispatch(cpu);
     APEX_decode(cpu);
     APEX_fetch(cpu);
-    //printBTB(cpu);
+    printBTB(cpu);
 
-     //printf("\nFlag contents: Z = %d\n\n", cpu->zero_flag);
+    printf("\nCC Flag contents: CC = %d\n\n", cpu->cc[0]);
     print_reg_file(cpu);
     print_data_memory(cpu);
 

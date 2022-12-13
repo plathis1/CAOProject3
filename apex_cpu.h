@@ -21,7 +21,7 @@ typedef struct PhyRegfile {
 }PhyRegfile;
 
 struct Node {
-    int data_values[2];
+    int data_values[3];
     struct Node* next;
 };
 
@@ -48,8 +48,7 @@ typedef struct Bus_forwarding
 int busy;
 int tag_part;
 int data_part;
-int next_data_bus;
-int bus_was_busy;
+int flag_part;
 } Bus_forwarding;
 
 /* Model of CPU stage latch */
@@ -129,6 +128,7 @@ typedef struct APEX_CPU
     int clock;                     /* Clock cycles elapsed */
     int insn_completed;            /* Instructions retired */
     int regs[REG_FILE_SIZE];       /* Integer register file */
+    int cc[0];                     //cc flag
     int valid_regs[REG_FILE_SIZE];       /* Integer register file indicating register valid bit*/
     int rename_table[REG_FILE_SIZE+1];
     Register physicalregs[PREG_FILE_SIZE]; // physical registers- valid bit-0 data value -1 cc flag value -2
