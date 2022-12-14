@@ -133,12 +133,12 @@ int print_rename_table(APEX_CPU *cpu)
   int i = 0;
   for (i = 0; i < REG_FILE_SIZE; i++)
   {
-    if (cpu->rename_table[i] != -1)
+    if (cpu->rename_table[i][0] != -1)
     {
-      printf("R[%d] --> P%d ---->and value=%d\n", i, cpu->rename_table[i], cpu->physicalregs[cpu->rename_table[i]].value);
+      printf("R[%d] --> P%d ---->and value=%d\n", i, cpu->rename_table[i][0], cpu->physicalregs[cpu->rename_table[i][0]].value);
     }
   }
-  printf("R[%d] --> CC ---->and value=%d\n", i, cpu->physicalregs[cpu->rename_table[i]].zeroFlag);
+  printf("R[%d] --> CC ---->and value=%d\n", i, cpu->physicalregs[cpu->rename_table[i][0]].zeroFlag);
   return 0;
 }
 
@@ -533,7 +533,7 @@ static void APEX_fetch(APEX_CPU *cpu)
           {
             if (cpu->branchBuffer->array[i].hit_or_miss == 1)
             {
-              cpu->pc = cpu->pc + cpu->fetch.imm;
+              cpu->pc = cpu->pc + cpu->fetch.imm - 4;
             }
           }
         }
@@ -609,18 +609,41 @@ static void APEX_decode(APEX_CPU *cpu)
 
       // step2 lookup the rename table for most recent instances of source registers
       // src1
-      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
-      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1];
-      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].value;
+
+      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1][0];
+      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].isValid;
+      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].value;
 
       // src2
-      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].isValid;
-      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2];
-      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].value;
+      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].isValid;
+      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2][0];
+      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].value;
+      
+      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd][0];
+      
+      if(free==cpu->decode.src1_tag){
+        cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].isValid;
+        cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].value;
+       } if(free==cpu->decode.src2_tag){
+        cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].isValid;
+        cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].value;
+       }if(cpu->rename_table[cpu->decode.rs1][1]==0){
+        cpu->decode.src1_validbit = 0;
+        cpu->decode.src1_value = cpu->regs[cpu->decode.rs1];
+       } if(cpu->rename_table[cpu->decode.rs2][1]==0){
+        cpu->decode.src2_validbit = 0;
+        cpu->decode.src2_value = cpu->regs[cpu->decode.rs2];
+       
+       }
+
+       
+        
+
 
       // step 3 update latest instance of rd in rename table
-      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd];
-      cpu->rename_table[cpu->decode.rd] = free;
+      cpu->rename_table[cpu->decode.rd][0] = free;
+      cpu->rename_table[cpu->decode.rd][1]=1;
+      cpu->decode.dest = free;
       cpu->physicalregs[free].isValid = 1;
 
       break;
@@ -630,22 +653,31 @@ static void APEX_decode(APEX_CPU *cpu)
 
       // step2 lookup the rename table for most recent instances of source registers
       // src1
-      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
-      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1];
-      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].value;
+      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].isValid;
+      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1][0];
+      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].value;
       // src2
-      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].isValid;
-      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2];
-      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].value;
+      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].isValid;
+      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2][0];
+      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].value;
+      if(cpu->rename_table[cpu->decode.rs1][1]==0){
+        cpu->decode.src1_validbit = 0;
+        cpu->decode.src1_value = cpu->regs[cpu->decode.rs1];
+       } if(cpu->rename_table[cpu->decode.rs2][1]==0){
+        cpu->decode.src2_validbit = 0;
+        cpu->decode.src2_value = cpu->regs[cpu->decode.rs2];
+       }
       break;
     }
     case OPCODE_MOVC:
     {
       int free = retreiveRegister(cpu->freePhysicalRegister);
 
-      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd];
-      cpu->rename_table[cpu->decode.rd] = free;
+      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd][0];
+      cpu->rename_table[cpu->decode.rd][0] = free;
+      cpu->decode.dest = free;
       cpu->physicalregs[free].isValid = 1;
+      cpu->rename_table[cpu->decode.rd][1]=1;
       /* MOVC doesn't have register operands */
       break;
     }
@@ -653,9 +685,9 @@ static void APEX_decode(APEX_CPU *cpu)
     {
       // step 2
       // src1
-      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
-      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1];
-      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].value;
+      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].isValid;
+      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1][0];
+      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].value;
       cpu->fetch.has_insn = TRUE;
 
       break;
@@ -669,13 +701,24 @@ static void APEX_decode(APEX_CPU *cpu)
       int free = retreiveRegister(cpu->freePhysicalRegister);
       // step 2
       // src1
-      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
-      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1];
-      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].value;
+      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].isValid;
+      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1][0];
+      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].value;
+      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd][0];
+      if(free==cpu->decode.src1_tag){
+        cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].isValid;
+        cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.prev_dest][0]].value;
+       } 
+      if(cpu->rename_table[cpu->decode.rs1][1]==0){
+        cpu->decode.src1_validbit = 0;
+        cpu->decode.src1_value = cpu->regs[cpu->decode.rs1];
+       } 
       // step 3
-      cpu->decode.prev_dest = cpu->rename_table[cpu->decode.rd];
-      cpu->rename_table[cpu->decode.rd] = free;
+      
+      cpu->rename_table[cpu->decode.rd][0] = free;
+      cpu->decode.dest = free;
       cpu->physicalregs[free].isValid = 1;
+      cpu->rename_table[cpu->decode.rd][1]=1;
       break;
     }
 
@@ -683,17 +726,28 @@ static void APEX_decode(APEX_CPU *cpu)
     {
 
       // src1
-      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].isValid;
-      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1];
-      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1]].value;
+      cpu->decode.src1_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].isValid;
+      cpu->decode.src1_tag = cpu->rename_table[cpu->decode.rs1][0];
+      cpu->decode.src1_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs1][0]].value;
       // src2
-      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].isValid;
-      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2];
-      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2]].value;
+      cpu->decode.src2_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].isValid;
+      cpu->decode.src2_tag = cpu->rename_table[cpu->decode.rs2][0];
+      cpu->decode.src2_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs2][0]].value;
       // src3
-      cpu->decode.src3_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs3]].isValid;
-      cpu->decode.src3_tag = cpu->rename_table[cpu->decode.rs3];
-      cpu->decode.src3_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs3]].value;
+      cpu->decode.src3_validbit = cpu->physicalregs[cpu->rename_table[cpu->decode.rs3][0]].isValid;
+      cpu->decode.src3_tag = cpu->rename_table[cpu->decode.rs3][0];
+      cpu->decode.src3_value = cpu->physicalregs[cpu->rename_table[cpu->decode.rs3][0]].value;
+      if(cpu->rename_table[cpu->decode.rs1][1]==0){
+        cpu->decode.src1_validbit = 0;
+        cpu->decode.src1_value = cpu->regs[cpu->decode.rs1];
+       } if(cpu->rename_table[cpu->decode.rs2][1]==0){
+        cpu->decode.src2_validbit = 0;
+        cpu->decode.src2_value = cpu->regs[cpu->decode.rs2];
+       }
+       if(cpu->rename_table[cpu->decode.rs3][1]==0){
+        cpu->decode.src3_validbit = 0;
+        cpu->decode.src3_value = cpu->regs[cpu->decode.rs3];
+       } 
 
       break;
     }
@@ -815,7 +869,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
       cpu->dispatch.src3_validbit = 0; // not using r3 so made it valid
       cpu->dispatch.src3_tag = 0;
       cpu->dispatch.dtype = 1;
-      cpu->dispatch.dest = cpu->rename_table[cpu->dispatch.rd];
       break;
     }
     case OPCODE_MUL:
@@ -825,7 +878,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
       cpu->dispatch.src3_validbit = 0; // not using r3 so made it valid
       cpu->dispatch.src3_tag = 0;
       cpu->dispatch.dtype = 1;
-      cpu->dispatch.dest = cpu->rename_table[cpu->dispatch.rd];
       break;
     }
     case OPCODE_AND:
@@ -838,7 +890,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
       cpu->dispatch.src3_validbit = 0; // not using r3 so made it valid
       cpu->dispatch.src3_tag = 0;
       cpu->dispatch.dtype = 1;
-      cpu->dispatch.dest = cpu->rename_table[cpu->dispatch.rd];
       break;
     }
 
@@ -854,7 +905,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
       cpu->dispatch.src3_validbit = 0;
       cpu->dispatch.src3_tag = 0;
       cpu->dispatch.dtype = 1;
-      cpu->dispatch.dest = cpu->rename_table[cpu->dispatch.rd];
       break;
     }
     case OPCODE_JUMP:
@@ -881,7 +931,6 @@ static void APEX_dispatch(APEX_CPU *cpu)
       cpu->dispatch.src3_validbit = 0; // not using r3 so made it valid
       cpu->dispatch.src3_tag = 0;
       cpu->dispatch.dtype = 1;
-      cpu->dispatch.dest = cpu->rename_table[cpu->dispatch.rd];
       break;
     }
 
@@ -1331,6 +1380,19 @@ void printBTB(APEX_CPU *cpu)
     printf("\n");
   }
 }
+void printFreePhysical(APEX_CPU *cpu)
+{
+  if (cpu->freePhysicalRegister->size != 0)
+  {
+    printf("\n");
+    printf("Free registers are:\n");
+    for (int i = cpu->freePhysicalRegister->front; i <= cpu->freePhysicalRegister->rear; i++)
+    {
+      printf("%d, ", cpu->freePhysicalRegister->array[i]);
+    }
+    printf("\n");
+  }
+}
 void printLSQ(APEX_CPU *cpu)
 {
   if (cpu->loadStoreQueue->size != 0)
@@ -1417,7 +1479,7 @@ static void APEX_intFU(APEX_CPU *cpu)
     case OPCODE_BZ:
     {
 
-      if (cpu->rename_table[8] == TRUE)
+      if (cpu->rename_table[8][0] == TRUE)
       {
         int hm;
         for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
@@ -1432,9 +1494,6 @@ static void APEX_intFU(APEX_CPU *cpu)
           cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
 
           cpu->fetch_from_next_cycle = TRUE;
-          assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-          cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-          cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
 
           cpu->dispatch.has_insn = FALSE;
           cpu->decode.has_insn = FALSE;
@@ -1443,7 +1502,7 @@ static void APEX_intFU(APEX_CPU *cpu)
           // ROB entries deleted
           while (TRUE)
           {
-            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->size == 0)
             {
               break;
             }
@@ -1471,10 +1530,30 @@ static void APEX_intFU(APEX_CPU *cpu)
               {
                 // delete rob entry from rear
                 cpu->issueQueue[i].free_bit = 0;
-
-                assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0] = cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
               }
               else
               {
@@ -1485,12 +1564,28 @@ static void APEX_intFU(APEX_CPU *cpu)
           // LSQ entries deleted
           while (TRUE)
           {
-            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->size == 0)
             {
               break;
             }
             else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
             {
+              switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
               // delete rob entry from rear
               cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
               cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
@@ -1500,6 +1595,59 @@ static void APEX_intFU(APEX_CPU *cpu)
               break;
             }
           }
+          switch (cpu->dispatch.opcode)
+          {
+          case OPCODE_ADD:
+          case OPCODE_MOVC:
+          case OPCODE_ADDL:
+          case OPCODE_SUB:
+          case OPCODE_SUBL:
+          case OPCODE_DIV:
+          case OPCODE_MUL:
+          case OPCODE_AND:
+          case OPCODE_OR:
+          case OPCODE_XOR:
+          case OPCODE_LOAD:
+          case OPCODE_LDR:
+          case OPCODE_CMP:
+          {
+            assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+            cpu->rename_table[cpu->dispatch.rd][0] = cpu->dispatch.prev_dest;
+            cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+            break;
+          }
+          default:
+          {
+            break;
+          }
+          }
+          switch (cpu->decode.opcode)
+          {
+          case OPCODE_ADD:
+          case OPCODE_MOVC:
+          case OPCODE_ADDL:
+          case OPCODE_SUB:
+          case OPCODE_SUBL:
+          case OPCODE_DIV:
+          case OPCODE_MUL:
+          case OPCODE_AND:
+          case OPCODE_OR:
+          case OPCODE_XOR:
+          case OPCODE_LOAD:
+          case OPCODE_LDR:
+          case OPCODE_CMP:
+          {
+            assignRegister(cpu->freePhysicalRegister, cpu->decode.dest);
+            cpu->rename_table[cpu->decode.rd][0] = cpu->decode.prev_dest;
+            cpu->physicalregs[cpu->decode.dest].isValid = 0;
+            break;
+          }
+          default:
+          {
+            break;
+          }
+          }
+
           for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
           {
             if (cpu->branchBuffer->array[i].pc == cpu->intFU.pc)
@@ -1520,10 +1668,6 @@ static void APEX_intFU(APEX_CPU *cpu)
               cpu->pc = cpu->intFU.pc + 4;
               cpu->fetch_from_next_cycle = TRUE;
 
-              assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-              cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-              cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
-
               cpu->dispatch.has_insn = FALSE;
               cpu->decode.has_insn = FALSE;
               cpu->fetch.has_insn = TRUE;
@@ -1531,7 +1675,7 @@ static void APEX_intFU(APEX_CPU *cpu)
               // ROB entries deleted
               while (TRUE)
               {
-                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->size == 0)
                 {
                   break;
                 }
@@ -1565,17 +1709,59 @@ static void APEX_intFU(APEX_CPU *cpu)
                   {
 
                     cpu->issueQueue[i].free_bit = 0;
-                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                   switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0] = cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
                   }
                   else if (cpu->intFU.imm > 0 && cpu->issueQueue[i].pc > cpu->intFU.pc)
                   {
                     cpu->issueQueue[i].free_bit = 0;
 
-                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                    switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0]= cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
                   }
                   else
                   {
@@ -1586,30 +1772,108 @@ static void APEX_intFU(APEX_CPU *cpu)
               // LSQ entries deleted
               while (TRUE)
               {
-                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->size == 0)
                 {
                   break;
                 }
                 else if (cpu->intFU.imm < 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
                 {
+                  switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
                   assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
                   cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
                   cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
                   cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
                 }
                 else if (cpu->intFU.imm > 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
                 {
+                   switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
                   assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
                   cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
+                cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
                   cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
                 }
                 else
                 {
                   break;
                 }
+              }
+              switch (cpu->dispatch.opcode)
+              {
+              case OPCODE_ADD:
+              case OPCODE_MOVC:
+              case OPCODE_ADDL:
+              case OPCODE_SUB:
+              case OPCODE_SUBL:
+              case OPCODE_DIV:
+              case OPCODE_MUL:
+              case OPCODE_AND:
+              case OPCODE_OR:
+              case OPCODE_XOR:
+              case OPCODE_LOAD:
+              case OPCODE_LDR:
+              case OPCODE_CMP:
+              {
+                assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+                cpu->rename_table[cpu->dispatch.rd][0] = cpu->dispatch.prev_dest;
+                cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+                break;
+              }
+              default:
+              {
+                break;
+              }
+              }
+              switch (cpu->decode.opcode)
+              {
+              case OPCODE_ADD:
+              case OPCODE_MOVC:
+              case OPCODE_ADDL:
+              case OPCODE_SUB:
+              case OPCODE_SUBL:
+              case OPCODE_DIV:
+              case OPCODE_MUL:
+              case OPCODE_AND:
+              case OPCODE_OR:
+              case OPCODE_XOR:
+              case OPCODE_LOAD:
+              case OPCODE_LDR:
+              case OPCODE_CMP:
+              {
+                assignRegister(cpu->freePhysicalRegister, cpu->decode.dest);
+                cpu->rename_table[cpu->decode.rd][0] = cpu->decode.prev_dest;
+                cpu->physicalregs[cpu->decode.dest].isValid = 0;
+                break;
+              }
+              default:
+              {
+                break;
+              }
               }
             }
           }
@@ -1620,7 +1884,7 @@ static void APEX_intFU(APEX_CPU *cpu)
     case OPCODE_BNZ:
     {
 
-      if (cpu->rename_table[8] == FALSE)
+      if (cpu->rename_table[8][0] == FALSE)
       {
         int hm;
         for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
@@ -1635,9 +1899,6 @@ static void APEX_intFU(APEX_CPU *cpu)
           cpu->pc = cpu->intFU.pc + cpu->intFU.imm;
 
           cpu->fetch_from_next_cycle = TRUE;
-          assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-          cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-          cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
 
           cpu->dispatch.has_insn = FALSE;
           cpu->decode.has_insn = FALSE;
@@ -1646,7 +1907,7 @@ static void APEX_intFU(APEX_CPU *cpu)
           // ROB entries deleted
           while (TRUE)
           {
-            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+            if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->size == 0)
             {
               break;
             }
@@ -1675,9 +1936,30 @@ static void APEX_intFU(APEX_CPU *cpu)
                 // delete rob entry from rear
                 cpu->issueQueue[i].free_bit = 0;
 
-                assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0] = cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
               }
               else
               {
@@ -1688,13 +1970,28 @@ static void APEX_intFU(APEX_CPU *cpu)
           // LSQ entries deleted
           while (TRUE)
           {
-            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+            if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->size == 0)
             {
               break;
             }
             else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
             {
-              // delete rob entry from rear
+              switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                } // delete lsq entry from rear
               cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
               cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
             }
@@ -1710,6 +2007,58 @@ static void APEX_intFU(APEX_CPU *cpu)
               cpu->branchBuffer->array[i].hit_or_miss = 1;
             }
           }
+          switch (cpu->dispatch.opcode)
+          {
+          case OPCODE_ADD:
+          case OPCODE_MOVC:
+          case OPCODE_ADDL:
+          case OPCODE_SUB:
+          case OPCODE_SUBL:
+          case OPCODE_DIV:
+          case OPCODE_MUL:
+          case OPCODE_AND:
+          case OPCODE_OR:
+          case OPCODE_XOR:
+          case OPCODE_LOAD:
+          case OPCODE_LDR:
+          case OPCODE_CMP:
+          {
+            assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+            cpu->rename_table[cpu->dispatch.rd][0] = cpu->dispatch.prev_dest;
+            cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+            break;
+          }
+          default:
+          {
+            break;
+          }
+          }
+          switch (cpu->decode.opcode)
+          {
+          case OPCODE_ADD:
+          case OPCODE_MOVC:
+          case OPCODE_ADDL:
+          case OPCODE_SUB:
+          case OPCODE_SUBL:
+          case OPCODE_DIV:
+          case OPCODE_MUL:
+          case OPCODE_AND:
+          case OPCODE_OR:
+          case OPCODE_XOR:
+          case OPCODE_LOAD:
+          case OPCODE_LDR:
+          case OPCODE_CMP:
+          {
+            assignRegister(cpu->freePhysicalRegister, cpu->decode.dest);
+            cpu->rename_table[cpu->decode.rd][0] = cpu->decode.prev_dest;
+            cpu->physicalregs[cpu->decode.dest].isValid = 0;
+            break;
+          }
+          default:
+          {
+            break;
+          }
+          }
         }
       }
       else
@@ -1723,10 +2072,6 @@ static void APEX_intFU(APEX_CPU *cpu)
               cpu->pc = cpu->intFU.pc + 4;
               cpu->fetch_from_next_cycle = TRUE;
 
-              assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
-              cpu->rename_table[cpu->dispatch.rd] = cpu->dispatch.prev_dest;
-              cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
-
               cpu->dispatch.has_insn = FALSE;
               cpu->decode.has_insn = FALSE;
               cpu->fetch.has_insn = TRUE;
@@ -1734,7 +2079,7 @@ static void APEX_intFU(APEX_CPU *cpu)
               // ROB entries deleted
               while (TRUE)
               {
-                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+                if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->size == 0)
                 {
                   break;
                 }
@@ -1768,17 +2113,59 @@ static void APEX_intFU(APEX_CPU *cpu)
                   {
 
                     cpu->issueQueue[i].free_bit = 0;
-                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                   switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0] = cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
                   }
                   else if (cpu->intFU.imm > 0 && cpu->issueQueue[i].pc > cpu->intFU.pc)
                   {
                     cpu->issueQueue[i].free_bit = 0;
 
-                    assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-                    cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-                    cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                    switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0]= cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
                   }
                   else
                   {
@@ -1789,30 +2176,107 @@ static void APEX_intFU(APEX_CPU *cpu)
               // LSQ entries deleted
               while (TRUE)
               {
-                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+                if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->size == 0)
                 {
                   break;
                 }
                 else if (cpu->intFU.imm < 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc < cpu->intFU.pc)
                 {
+                   switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
                   assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
                   cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
+                cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
                   cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
                 }
                 else if (cpu->intFU.imm > 0 && cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
                 {
+                   switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
                   assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
                   cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
-                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest];
-                  cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
                   cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
                 }
                 else
                 {
                   break;
                 }
+              }
+              switch (cpu->dispatch.opcode)
+              {
+              case OPCODE_ADD:
+              case OPCODE_MOVC:
+              case OPCODE_ADDL:
+              case OPCODE_SUB:
+              case OPCODE_SUBL:
+              case OPCODE_DIV:
+              case OPCODE_MUL:
+              case OPCODE_AND:
+              case OPCODE_OR:
+              case OPCODE_XOR:
+              case OPCODE_LOAD:
+              case OPCODE_LDR:
+              case OPCODE_CMP:
+              {
+                assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+                cpu->rename_table[cpu->dispatch.rd][0] = cpu->dispatch.prev_dest;
+                cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+                break;
+              }
+              default:
+              {
+                break;
+              }
+              }
+              switch (cpu->decode.opcode)
+              {
+              case OPCODE_ADD:
+              case OPCODE_MOVC:
+              case OPCODE_ADDL:
+              case OPCODE_SUB:
+              case OPCODE_SUBL:
+              case OPCODE_DIV:
+              case OPCODE_MUL:
+              case OPCODE_AND:
+              case OPCODE_OR:
+              case OPCODE_XOR:
+              case OPCODE_LOAD:
+              case OPCODE_LDR:
+              case OPCODE_CMP:
+              {
+                assignRegister(cpu->freePhysicalRegister, cpu->decode.dest);
+                cpu->rename_table[cpu->decode.rd][0] = cpu->decode.prev_dest;
+                cpu->physicalregs[cpu->decode.dest].isValid = 0;
+                break;
+              }
+              default:
+              {
+                break;
+              }
               }
             }
           }
@@ -1833,7 +2297,7 @@ static void APEX_intFU(APEX_CPU *cpu)
       // ROB entries deleted
       while (TRUE)
       {
-        if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc)
+        if (cpu->reorderBuffer->array[cpu->reorderBuffer->rear].pc == cpu->intFU.pc || cpu->reorderBuffer->size == 0)
         {
           break;
         }
@@ -1861,10 +2325,30 @@ static void APEX_intFU(APEX_CPU *cpu)
           {
             // delete rob entry from rear
             cpu->issueQueue[i].free_bit = 0;
-
-            assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
-            cpu->rename_table[cpu->issueQueue[i].rd] = cpu->issueQueue[i].prev_dest;
-            cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+            switch (cpu->issueQueue[i].opcode)
+                {
+                case OPCODE_ADD:
+                case OPCODE_MOVC:
+                case OPCODE_ADDL:
+                case OPCODE_SUB:
+                case OPCODE_SUBL:
+                case OPCODE_DIV:
+                case OPCODE_MUL:
+                case OPCODE_AND:
+                case OPCODE_OR:
+                case OPCODE_XOR:
+                case OPCODE_CMP:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->issueQueue[i].dest);
+                  cpu->rename_table[cpu->issueQueue[i].rd][0] = cpu->issueQueue[i].prev_dest;
+                  cpu->physicalregs[cpu->issueQueue[i].dest].isValid = 0;
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
           }
           else
           {
@@ -1875,12 +2359,28 @@ static void APEX_intFU(APEX_CPU *cpu)
       // LSQ entries deleted
       while (TRUE)
       {
-        if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc)
+        if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc == cpu->intFU.pc || cpu->loadStoreQueue->size == 0)
         {
           break;
         }
         else if (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].pc > cpu->intFU.pc)
         {
+           switch (cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].opcode)
+                {
+                case OPCODE_LOAD:
+                case OPCODE_LDR:
+                {
+                  assignRegister(cpu->freePhysicalRegister, cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest);
+                  cpu->physicalregs[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].dest].isValid = 0;
+                  cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].rd][0] = cpu->rename_table[cpu->loadStoreQueue->array[cpu->loadStoreQueue->rear].prev_dest][0];
+                  
+                  break;
+                }
+                default:
+                {
+                  break;
+                }
+                }
           // delete rob entry from rear
           cpu->loadStoreQueue->rear = cpu->loadStoreQueue->rear - 1;
           cpu->loadStoreQueue->size = cpu->loadStoreQueue->size - 1;
@@ -1889,6 +2389,58 @@ static void APEX_intFU(APEX_CPU *cpu)
         {
           break;
         }
+      }
+      switch (cpu->dispatch.opcode)
+      {
+      case OPCODE_ADD:
+      case OPCODE_MOVC:
+      case OPCODE_ADDL:
+      case OPCODE_SUB:
+      case OPCODE_SUBL:
+      case OPCODE_DIV:
+      case OPCODE_MUL:
+      case OPCODE_AND:
+      case OPCODE_OR:
+      case OPCODE_XOR:
+      case OPCODE_LOAD:
+      case OPCODE_LDR:
+      case OPCODE_CMP:
+      {
+        assignRegister(cpu->freePhysicalRegister, cpu->dispatch.dest);
+        cpu->rename_table[cpu->dispatch.rd][0] = cpu->dispatch.prev_dest;
+        cpu->physicalregs[cpu->dispatch.dest].isValid = 0;
+        break;
+      }
+      default:
+      {
+        break;
+      }
+      }
+      switch (cpu->decode.opcode)
+      {
+      case OPCODE_ADD:
+      case OPCODE_MOVC:
+      case OPCODE_ADDL:
+      case OPCODE_SUB:
+      case OPCODE_SUBL:
+      case OPCODE_DIV:
+      case OPCODE_MUL:
+      case OPCODE_AND:
+      case OPCODE_OR:
+      case OPCODE_XOR:
+      case OPCODE_LOAD:
+      case OPCODE_LDR:
+      case OPCODE_CMP:
+      {
+        assignRegister(cpu->freePhysicalRegister, cpu->decode.dest);
+        cpu->rename_table[cpu->decode.rd][0] = cpu->decode.prev_dest;
+        cpu->physicalregs[cpu->decode.dest].isValid = 0;
+        break;
+      }
+      default:
+      {
+        break;
+      }
       }
       for (int i = cpu->branchBuffer->front; i <= cpu->branchBuffer->rear; i++)
       {
@@ -2298,7 +2850,7 @@ void Forwarding_Bus_0(APEX_CPU *cpu)
   // print_bus0(cpu);
   cpu->physicalregs[cpu->bus0.tag_part].value = cpu->bus0.data_part;
   cpu->physicalregs[cpu->bus0.tag_part].zeroFlag = cpu->bus0.flag_part;
-  cpu->rename_table[8] = cpu->bus0.flag_part;
+  cpu->rename_table[8][0] = cpu->bus0.flag_part;
   cpu->physicalregs[cpu->bus0.tag_part].isValid = 0;
 
   // remove from the list
@@ -2317,7 +2869,7 @@ void Forwarding_Bus_1(APEX_CPU *cpu)
   cpu->physicalregs[cpu->bus1.tag_part].value = cpu->bus1.data_part;
   cpu->physicalregs[cpu->bus1.tag_part].zeroFlag = cpu->bus1.flag_part;
   cpu->physicalregs[cpu->bus1.tag_part].isValid = 0;
-  cpu->rename_table[8] = cpu->bus0.flag_part;
+  cpu->rename_table[8][0] = cpu->bus0.flag_part;
 
   // remove from the list
   int returnarray[3];
@@ -2349,9 +2901,11 @@ int commit_on_archs(APEX_CPU *cpu)
     case OPCODE_LDR:
     {
       cpu->regs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].rd] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].value;
+      cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].isValid=0;
       cpu->cc[0] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].zeroFlag;
       // free physical register
       assignRegister(cpu->freePhysicalRegister, cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest);
+      cpu->rename_table[cpu->reorderBuffer->array[cpu->reorderBuffer->front].rd][1]=0;
       break;
     }
     case OPCODE_BZ:
@@ -2366,6 +2920,8 @@ int commit_on_archs(APEX_CPU *cpu)
       cpu->cc[0] = cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].zeroFlag;
       // free physical register
       assignRegister(cpu->freePhysicalRegister, cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest);
+      cpu->rename_table[cpu->reorderBuffer->array[cpu->reorderBuffer->front].rd][1]=0;
+      cpu->physicalregs[cpu->reorderBuffer->array[cpu->reorderBuffer->front].dest].isValid=0;
       break;
     }
     case OPCODE_HALT:
@@ -2394,6 +2950,10 @@ int commit_on_archs(APEX_CPU *cpu)
   {
     switch (cpu->reorderBuffer->array[cpu->reorderBuffer->front].opcode)
     {
+    case OPCODE_BZ:
+    case OPCODE_JUMP:
+    case OPCODE_BNZ:
+    case OPCODE_NOP:
     case OPCODE_STORE:
     case OPCODE_STR:
     {
@@ -2462,9 +3022,9 @@ APEX_CPU *APEX_cpu_init(const char *filename)
   int k = 0;
   for (k = 0; k < REG_FILE_SIZE; k++)
   {
-    cpu->rename_table[k] = -1;
+    cpu->rename_table[k][0] = -1;
   }
-  cpu->rename_table[k] = cpu->cc[0];
+  cpu->rename_table[k][0] = cpu->cc[0];
   memset(cpu->issueQueue, 0, sizeof(APEX_Instruction) * IQ_SIZE);
   if (ENABLE_DEBUG_MESSAGES)
   {
@@ -2517,14 +3077,15 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
       printf("Clock Cycle #: %d\n", cpu->clock + 1);
       printf("--------------------------------------------\n");
     }
-    // print_physical_register_state(cpu);
-    // print_rename_table(cpu);
+    //print_physical_register_state(cpu);
+    //print_rename_table(cpu);
     // Commit ROB & update LSQ
     if (commit_on_archs(cpu))
     {
       break;
     }
     APEX_LSQueueUpdate(cpu);
+    //printFreePhysical(cpu);
     //printROB(cpu);
     //printLSQ(cpu);
 
@@ -2534,9 +3095,9 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
     APEX_mulFU2(cpu);
     APEX_mulFU1(cpu);
     APEX_logicalopFU(cpu);
-    APEX_intFU(cpu);
 
-    // Data transferred through forwarding bus
+    APEX_intFU(cpu);
+   // Data transferred through forwarding bus
     moveDatatobus(cpu);
 
     // update issue Queue and transfer instructions to FU's
@@ -2544,13 +3105,23 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
     APEX_issueQueueUpdate(cpu);
 
     // Dispatch, Decode, Fetch
+    // printf("dest (tag) value is %d, src1 tag is %d,src1 value is %d , src2 tag is %d and  src2 value is %d\n",cpu->dispatch.dest,cpu->dispatch.src1_value,cpu->dispatch.src1_tag,cpu->dispatch.src2_tag,cpu->dispatch.src2_value);
+
     APEX_dispatch(cpu);
+    //printf("dest (tag) value is %d, src1 tag is %d,src1 value is %d, src1 valid bit is %d ,src2 valid bit is %d ,src2 tag is %d and  src2 value is %d\n",cpu->dispatch.dest,cpu->dispatch.src1_tag,cpu->dispatch.src1_value,cpu->dispatch.src1_validbit,cpu->dispatch.src2_validbit,cpu->dispatch.src2_tag,cpu->dispatch.src2_value);
+
+    //printf("dest (tag) value is %d\n", cpu->dispatch.dest);
+    // printf("dest (tag) value is %d, src1 tag is %d,src1 value is %d , src2 tag is %d and  src2 value is %d\n",cpu->decode.dest,cpu->decode.src1_value,cpu->decode.src1_tag,cpu->decode.src2_tag,cpu->decode.src2_value);
+
     APEX_decode(cpu);
+    //printf("dest (tag) value is %d, src1 tag is %d,src1 value is %d, src1 valid bit is %d ,src2 valid bit is %d , src2 tag is %d and  src2 value is %d\n",cpu->decode.dest,cpu->decode.src1_tag,cpu->decode.src1_value,cpu->decode.src1_validbit,cpu->decode.src2_validbit,cpu->decode.src2_tag,cpu->decode.src2_value);
+
+    //printf("dest (tag) value is %d\n", cpu->decode.dest);
     APEX_fetch(cpu);
     //printBTB(cpu);
-
+    // commentbelow
     //print_reg_file(cpu);
-    //printf("\nCC Flag contents: CC = %d\n\n", cpu->cc[0]);
+    //printf("\nCC Flag contents: CC = %d\n\n", cpu->rename_table[8][0]);
     //print_data_memory(cpu);
 
     if (cpu->single_step && Non_stop)
@@ -2567,7 +3138,12 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
     cpu->clock++;
   }
   printf("\n");
-  printf("APEX_CPU: Simulation Complete, cycles = %d instructions = %d\n", cpu->clock, cpu->insn_completed);
+  printf("APEX_CPU: Simulation Complete, cycles = %d instructions = %d\n", cpu->clock+1, cpu->insn_completed);
+  
+  // print_physical_register_state(cpu);
+  // print_rename_table(cpu);
+  print_reg_file(cpu);
+  print_data_memory(cpu);
   if (strcmp(mode, "display") == 0)
   {
     printROB(cpu);
@@ -2575,10 +3151,6 @@ void APEX_cpu_run(APEX_CPU *cpu, const char *mode, int cycles)
     display_issueQueue(cpu);
     printBTB(cpu);
   }
-  // print_physical_register_state(cpu);
-  // print_rename_table(cpu);
-  print_reg_file(cpu);
-  print_data_memory(cpu);
 }
 /*
  * This function deallocates APEX CPU.
@@ -2609,8 +3181,15 @@ int retreiveRegister(struct PhyRegfile *queue)
   if (queue->size == 0)
     return -1;
   int item = queue->array[queue->front];
-  queue->front = (queue->front + 1) % queue->capacity;
+
+  // queue->front = (queue->front + 1) % queue->capacity;
+  // queue->size = queue->size - 1;
   queue->size = queue->size - 1;
+  for (int k = queue->front; k < queue->rear; k++)
+  {
+    queue->array[k] = queue->array[k + 1];
+  }
+  queue->rear = queue->rear - 1;
   return item;
 }
 

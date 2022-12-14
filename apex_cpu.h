@@ -130,7 +130,7 @@ typedef struct APEX_CPU
     int regs[REG_FILE_SIZE];       /* Integer register file */
     int cc[0];                     //cc flag
     int valid_regs[REG_FILE_SIZE];       /* Integer register file indicating register valid bit*/
-    int rename_table[REG_FILE_SIZE+1];
+    int rename_table[REG_FILE_SIZE+1][2];
     Register physicalregs[PREG_FILE_SIZE]; // physical registers- valid bit-0 data value -1 cc flag value -2
     Bus_forwarding bus0;
     Bus_forwarding bus1;
